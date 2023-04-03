@@ -126,7 +126,7 @@ impl EventLoop {
     /// - The network event stream, e.g. for incoming requests.
     ///
     /// - The network task driving the network itself.
-    pub async fn new(// secret_key_seed: Option<u8>,
+    pub fn new(// secret_key_seed: Option<u8>,
     ) -> Result<(Client, impl Stream<Item = Event>, EventLoop)> {
         // Create a random key for ourselves.
         let keypair = identity::Keypair::generate_ed25519();
@@ -191,9 +191,9 @@ impl EventLoop {
     pub async fn run(mut self) {
         loop {
             futures::select! {
-                event = self.swarm.next() => self.handle_event(event.expect("Swarm stream to be infinite.")).await  ,
+                event = self.swarm.next() => self.handle_event(event.expect("Swarm stream to be infinite!")).await  ,
                 command = self.command_receiver.next() => match command {
-                    Some(c) => self.handle_command(c).await,
+                    Some(c) => self.handle_command(c),
                     // Command channel closed, thus shutting down the network event loop.
                     None=>  return,
                 },
@@ -201,9 +201,9 @@ impl EventLoop {
         }
     }
 
-    async fn handle_event<THandleErr: std::error::Error>(
+    async fn handle_event<EventError: std::error::Error>(
         &mut self,
-        event: SwarmEvent<SafeNodeEvent, THandleErr>,
+        event: SwarmEvent<SafeNodeEvent, EventError>,
     ) {
         match event {
             SwarmEvent::Behaviour(SafeNodeEvent::Kademlia(

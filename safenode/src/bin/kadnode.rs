@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
     let opt = Opt::parse();
     let _log_appender_guard = init_node_logging(&opt.log_dir)?;
 
-    let (mut network_client, mut network_events, network_event_loop) = EventLoop::new().await?;
+    let (mut network_client, mut network_events, network_event_loop) = EventLoop::new()?;
     let temp_dir = TempDir::new()?;
     let storage = DataStorage::new(&temp_dir);
 

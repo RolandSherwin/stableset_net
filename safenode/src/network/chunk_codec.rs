@@ -15,14 +15,21 @@ use libp2p::{
 use std::io;
 use xor_name::XorName;
 
+use crate::storage::chunks::Chunk;
+
+pub(crate) enum SafeMsg {
+    Chunk(Chunk),
+    Dbc,
+}
+
 // Chuck Storage protocol
 #[derive(Debug, Clone)]
-pub struct ChunkStorageProtocol();
+pub(crate) struct ChunkStorageProtocol();
 #[derive(Clone)]
-pub struct ChunkStorageCodec();
+pub(crate) struct ChunkStorageCodec();
 #[derive(Debug, Clone, PartialEq, Eq)]
 // request the xorname of the file
-pub struct ChunkRequest(pub XorName);
+pub(crate) struct ChunkRequest(pub(crate) XorName);
 #[derive(Debug, Clone, PartialEq, Eq)]
 // respond with the file
 pub struct ChunkResponse(pub Vec<u8>);

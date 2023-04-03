@@ -18,7 +18,7 @@ use xor_name::XorName;
 
 /// Commands to send to the Swarm
 #[derive(Debug)]
-pub enum CmdToSwarm {
+pub(crate) enum CmdToSwarm {
     StartListening {
         addr: Multiaddr,
         sender: oneshot::Sender<Result<()>>,
@@ -48,7 +48,7 @@ pub enum CmdToSwarm {
 }
 
 impl EventLoop {
-    pub async fn handle_command(&mut self, command: CmdToSwarm) {
+    pub(crate) fn handle_command(&mut self, command: CmdToSwarm) {
         match command {
             CmdToSwarm::StartListening { addr, sender } => {
                 let _ = match self.swarm.listen_on(addr) {
