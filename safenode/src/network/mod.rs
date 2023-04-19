@@ -361,7 +361,7 @@ mod tests {
     };
     use rand::thread_rng;
     use std::{
-        collections::{BTreeMap, HashMap},
+        collections::{BTreeMap, HashMap, HashSet},
         fmt,
         net::SocketAddr,
         time::Duration,
@@ -458,5 +458,57 @@ mod tests {
         }
 
         assert_eq!(vec2.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn gg() -> Result<()> {
+        let _ = init_node_logging(&None)?;
+        // create kbucket with nodes
+        let mut table =
+            KBucketsTable::<_, ()>::new(KBucketKey::from(PeerId::random()), Duration::from_secs(5));
+        let mut single_node = None;
+        for _ in 0..100 {
+            let key = KBucketKey::from(PeerId::random());
+            if single_node.is_none() {
+                single_node = Some(key.clone());
+            }
+
+            if let Entry::Absent(e) = table.entry(&key) {
+                match e.insert((), NodeStatus::Connected) {
+                    InsertResult::Inserted => {}
+                    _ => continue,
+                }
+            } else {
+                return Err(eyre!("Table entry should be absent"));
+            }
+        }
+        let single_node = single_node.unwrap();
+        let mut ordered_data: Vec<KBucketKey<PeerId>> = Vec::new();
+
+        for _ in 0..1000 {
+            let mut new_data_is_closer_than_boundary = false;
+            let data = KBucketKey::from(PeerId::random());
+            // check if the random data is less than boundary
+            if let Some(boundary) = ordered_data.last() {
+                if single_node.distance(&data) < single_node.distance(&boundary) {
+                    new_data_is_closer_than_boundary = true;
+                    info!("new data is closer than boundary");
+                }
+            }
+            let closest = table.closest_keys(&data).take(8).collect::<HashSet<_>>();
+            if closest.contains(&single_node) {
+                if !new_data_is_closer_than_boundary {
+                    info!("boundary extended");
+                };
+                ordered_data.push(data);
+                ordered_data.sort_by_key(|a| single_node.distance(&a));
+                info!("Found single node in closest");
+            } else {
+                assert!(!new_data_is_closer_than_boundary);
+                // info!("no");
+            }
+        }
+
+        Ok(())
     }
 }
