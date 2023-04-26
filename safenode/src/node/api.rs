@@ -466,3 +466,54 @@ impl Node {
         responses
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{log::init_node_logging, node::Node};
+    use assert_fs::TempDir;
+    use eyre::Result;
+    use rand::thread_rng;
+    use std::{
+        collections::HashSet,
+        net::{IpAddr, Ipv4Addr, SocketAddr},
+    };
+    use sysinfo::{System, SystemExt};
+    use tokio::time::Duration;
+    use xor_name::XorName;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn gg() -> Result<()> {
+        let _ = init_node_logging(&None)?;
+        // get the number of safenodes running
+        let mut sys = System::new_all();
+        sys.refresh_all();
+        let local_safenode_count = sys.processes_by_exact_name("safenode").count();
+
+        // use a crawler to get the PeerId of all the safenodes
+        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0);
+        let temp_dir = TempDir::new()?;
+        let mut rng = thread_rng();
+        let crawler = Node::run(socket, vec![], &temp_dir).await?;
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
+
+        let mut peer_ids = HashSet::new();
+        while peer_ids.len() < local_safenode_count {
+            info!("peer_ids.len(): {}", peer_ids.len());
+            peer_ids.extend(crawler.get_swarm_local_state().await?.connected_peers);
+            if peer_ids.len() == local_safenode_count {
+                break;
+            }
+            peer_ids.extend(
+                crawler
+                    .network
+                    .client_get_closest_peers(XorName::random(&mut rng))
+                    .await?,
+            );
+        }
+        assert_eq!(peer_ids.len(), local_safenode_count);
+        assert!(!peer_ids.contains(&crawler.network.peer_id));
+
+        Ok(())
+    }
+}

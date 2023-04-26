@@ -59,6 +59,7 @@ xor_name = "5.0.0"
 assert_fs = "1.0.0"
 assert_matches = "1.5.0"
 proptest = { version = "1.0.0" }
+sysinfo = "0.28.4"
 
 [build-dependencies]
 tonic-build = { version = "0.6.2" }
