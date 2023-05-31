@@ -7,7 +7,6 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use super::ChunkAddress;
-
 use bytes::Bytes;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use xor_name::XorName;

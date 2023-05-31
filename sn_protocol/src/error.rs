@@ -10,7 +10,6 @@ use crate::storage::{
     registers::{EntryHash, User},
     ChunkAddress, DbcAddress, RegisterAddress,
 };
-
 use serde::{Deserialize, Serialize};
 use sn_dbc::{Hash, SignedSpend};
 use thiserror::Error;
@@ -137,4 +136,6 @@ pub enum Error {
         /// The hash of the provided source tx.
         provided_src_tx_hash: Hash,
     },
+    #[error("Failed to serialize Deserialize RecordHeader")]
+    FailedToDeserializeRecordHeader,
 }

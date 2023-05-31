@@ -38,10 +38,7 @@ impl SpendBook {
         trace!("Handling spend get for address: {address:?}");
 
         // get spend from kad
-        let signed_spend_bytes = match network
-            .get_provided_data(RecordKey::new(address.name()))
-            .await
-        {
+        let signed_spend_bytes = match network.get_kad_data(RecordKey::new(address.name())).await {
             Ok(Ok(signed_spend_bytes)) => signed_spend_bytes,
             Ok(Err(err)) | Err(err) => {
                 error!("Error getting spend from local store: {err}");

@@ -192,7 +192,7 @@ impl Node {
             Query::GetChunk(address) => {
                 match self
                     .network
-                    .get_provided_data(RecordKey::new(address.name()))
+                    .get_kad_data(RecordKey::new(address.name()))
                     .await
                 {
                     Ok(Ok(data)) => QueryResponse::GetChunk(Ok(Chunk::new(data.into()))),
@@ -220,12 +220,7 @@ impl Node {
                 debug!("That's a store chunk in for :{:?}", addr.name());
 
                 // Create a Kademlia record for storage
-                let record = Record {
-                    key: RecordKey::new(addr.name()),
-                    value: chunk.value().to_vec(),
-                    publisher: None,
-                    expires: None,
-                };
+                let record = Record::try_from(chunk).unwrap();
 
                 let resp = match self.network.put_data_as_record(record).await {
                     Ok(()) => {

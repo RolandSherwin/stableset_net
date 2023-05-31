@@ -72,4 +72,7 @@ pub enum Error {
 
     #[error("Record was not found locally")]
     RecordNotFound,
+
+    #[error("Failed to serailize Record")]
+    RecordSerDeFailed,
 }

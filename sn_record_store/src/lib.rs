@@ -17,6 +17,8 @@ use libp2p::{
     },
 };
 use rand::Rng;
+use sn_dbc::SignedSpend;
+use sn_protocol::storage::{Chunk, DbcAddress, RecordHeader, RecordKind, Register};
 use std::{
     borrow::Cow,
     collections::{hash_set, HashSet},
@@ -123,16 +125,6 @@ impl DiskBackedRecordStore {
             .collect()
     }
 
-    // Converts a Key into a Hex string.
-    fn key_to_hex(key: &Key) -> String {
-        let key_bytes = key.as_ref();
-        let mut hex_string = String::with_capacity(key_bytes.len() * 2);
-        for byte in key_bytes {
-            hex_string.push_str(&format!("{:02x}", byte));
-        }
-        hex_string
-    }
-
     pub fn storage_dir(&self) -> PathBuf {
         self.config.storage_dir.clone()
     }
@@ -162,6 +154,91 @@ impl DiskBackedRecordStore {
     pub fn write_to_local(&mut self, record: Record) -> Result<()> {
         self.put(record)
     }
+
+    // Converts a Key into a Hex string.
+    fn key_to_hex(key: &Key) -> String {
+        let key_bytes = key.as_ref();
+        let mut hex_string = String::with_capacity(key_bytes.len() * 2);
+        for byte in key_bytes {
+            hex_string.push_str(&format!("{:02x}", byte));
+        }
+        hex_string
+    }
+
+    // validate
+    fn validate_before_put(record: &Record, header: &RecordHeader) -> bool {
+        match header.kind {
+            RecordKind::Chunk => {
+                // check if the key = hash(value)
+            }
+            RecordKind::DbcSpend => todo!(),
+            RecordKind::Register => todo!(),
+        }
+
+        true
+    }
+
+    // validate overwrite attempt
+    // continue overwrite with modified record if true.
+    fn validate_overwrite_attempt(&self, record: &mut Record, header: &RecordHeader) -> bool {
+        match header.kind {
+            RecordKind::Chunk => {
+                debug!(
+                    "Chunk with key {:?} already exists, not overwriting.",
+                    record.key
+                );
+                false
+            }
+            RecordKind::DbcSpend => {
+                debug!(
+                    "DbcSpend with key {:?} already exists, checking for double spend",
+                    record.key
+                );
+                let signed_spend = record.value[RecordHeader::SIZE..].to_vec();
+                let signed_spend: SignedSpend = match bincode::deserialize(&signed_spend) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("Failed to get spend because deserialization failed: {e:?}");
+                        return false;
+                    }
+                };
+                // check if signed spend gives the correct kye
+                let dbc_id = signed_spend.dbc_id();
+                let dbc_addr = DbcAddress::from_dbc_id(dbc_id);
+                if record.key != Key::new(dbc_addr.name()) {
+                    warn!("The ")
+                }
+
+                let local_record = match Self::read_from_disk(&record.key, &self.config.storage_dir)
+                {
+                    Some(local_record) => local_record.into_owned(),
+                    None => {
+                        error!("Local record not found, DiskBackedRecordStore::records went out of sync");
+                        return false;
+                    }
+                };
+                let local_signed_spend = local_record.value[RecordHeader::SIZE..].to_vec();
+                let local_signed_spend: SignedSpend =
+                    match bincode::deserialize(&local_signed_spend) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            error!("Failed to get spend because deserialization failed: {e:?}");
+                            return false;
+                        }
+                    };
+
+                if signed_spend == local_signed_spend {
+                    debug!("The overwrite attempt was for the same signed_spend. Ignoring it");
+                }
+
+                true
+            }
+            RecordKind::Register => {
+                warn!("Overwrite attempt handling for Registers has not been implemented yet. key {:?}", record.key);
+                false
+            }
+        }
+    }
 }
 
 impl RecordStore for DiskBackedRecordStore {
@@ -190,22 +267,96 @@ impl RecordStore for DiskBackedRecordStore {
             );
             return Err(Error::ValueTooLarge);
         }
-
-        // todo: the key is not tied to the value it contains, hence the value can be overwritten
-        // (incase of dbc double spends etc), hence need to deal with those.
-        // Maybe implement a RecordHeader to store the type of data we're storing?
-        if self.records.contains(&r.key) {
-            debug!(
-                "Record with key {:?} already exists, not overwriting.",
-                r.key
-            );
-            return Ok(());
-        }
-
         let num_records = self.records.len();
         if num_records >= self.config.max_records {
             warn!("Record not stored. Maximum number of records reached. Current num_records: {num_records}");
             return Err(Error::MaxRecords);
+        }
+
+        let overwrite_attempt = self.records.contains(&r.key);
+        let header = match RecordHeader::deserialize(&r.value) {
+            Ok(header) => header,
+            Err(_) => {
+                error!("Error while deserializing RecordHeader");
+                return Ok(());
+            }
+        };
+
+        match header.kind {
+            RecordKind::Chunk => {
+                if overwrite_attempt {
+                    debug!("Chunk with key {:?} already exists, not overwriting", r.key);
+                    return Ok(());
+                }
+                // todo: convert from r.value[] to bytes without usinng to_vec
+                let chunk = Chunk::new(r.value[RecordHeader::SIZE..].to_vec().into());
+
+                // check if the deserialized value's ChunkAddress matches the record's key
+                if r.key != Key::new(chunk.address().name()) {
+                    error!(
+                        "Record's key does not match with the value's ChunkAddress, ignoring PUT."
+                    );
+                    return Ok(());
+                }
+            }
+            RecordKind::DbcSpend => {
+                let signed_spend = r.value[RecordHeader::SIZE..].to_vec();
+                let signed_spend: SignedSpend = match bincode::deserialize(&signed_spend) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("Failed to get spend because deserialization failed: {e:?}");
+                        return Ok(());
+                    }
+                };
+
+                // check if the deserialized value's DbcAddress matches with the record's key
+                let dbc_addr = DbcAddress::from_dbc_id(signed_spend.dbc_id());
+                if r.key != Key::new(dbc_addr.name()) {
+                    error!(
+                        "Record's key does not match with the value's DbcAddress, ignoring PUT."
+                    );
+                    return Ok(());
+                }
+
+                if overwrite_attempt {
+                    debug!(
+                        "DbcSpend with key {:?} already exists, checking for double spend",
+                        r.key
+                    );
+                    // fetch the locally stored record
+                    let local_record = match Self::read_from_disk(&r.key, &self.config.storage_dir)
+                    {
+                        Some(local_record) => local_record.into_owned(),
+                        None => {
+                            error!("Local record not found, DiskBackedRecordStore::records went out of sync");
+                            return Ok(());
+                        }
+                    };
+                    let local_signed_spend = local_record.value[RecordHeader::SIZE..].to_vec();
+                    let local_signed_spend: SignedSpend =
+                        match bincode::deserialize(&local_signed_spend) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                error!("Failed to get spend because deserialization failed: {e:?}");
+                                return Ok(());
+                            }
+                        };
+
+                    if signed_spend == local_signed_spend {
+                        debug!("The overwrite attempt was for the same signed_spend. Ignoring it");
+                        return Ok(());
+                    }
+
+                    debug!("Double spend detected, storing both the signed_spends");
+                    // todo: store as vec
+                }
+            }
+            RecordKind::Register => {
+                if overwrite_attempt {
+                    warn!("Overwrite attempt handling for Registers has not been implemented yet. key {:?}", r.key);
+                    return Ok(());
+                }
+            }
         }
 
         let filename = Self::key_to_hex(&r.key);

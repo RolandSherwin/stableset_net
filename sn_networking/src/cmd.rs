@@ -92,7 +92,7 @@ impl SwarmDriver {
                     .put_record(record, libp2p::kad::Quorum::All)?;
             }
             SwarmCmd::StoreReplicatedData { replicated_data } => {
-                self.store_repliated_data(replicated_data);
+                self.store_repliated_data(replicated_data)?;
             }
             SwarmCmd::StartListening { addr, sender } => {
                 let _ = match self.swarm.listen_on(addr) {
@@ -205,24 +205,22 @@ impl SwarmDriver {
         Ok(())
     }
 
-    fn store_repliated_data(&mut self, replicated_data: ReplicatedData) {
+    fn store_repliated_data(&mut self, replicated_data: ReplicatedData) -> Result<()> {
         match replicated_data {
             ReplicatedData::Chunk(chunk) => self.replicate_chunk_to_local(chunk),
-            other => warn!("Not supporter other type of replicated data {:?}", other),
+            other => {
+                warn!("Not supporter other type of replicated data {:?}", other);
+                Ok(())
+            }
         }
     }
 
-    fn replicate_chunk_to_local(&mut self, chunk: Chunk) {
+    fn replicate_chunk_to_local(&mut self, chunk: Chunk) -> Result<()> {
         let addr = *chunk.address();
         debug!("That's a replicate chunk in for :{:?}", addr.name());
 
         // Create a Kademlia record for storage
-        let record = Record {
-            key: RecordKey::new(addr.name()),
-            value: chunk.value().to_vec(),
-            publisher: None,
-            expires: None,
-        };
+        let record = Record::try_from(chunk).map_err(|_| Error::RecordSerDeFailed)?;
 
         let _ = self
             .swarm
@@ -230,5 +228,6 @@ impl SwarmDriver {
             .kademlia
             .store_mut()
             .write_to_local(record);
+        Ok(())
     }
 }

@@ -184,11 +184,7 @@ impl Client {
     pub(super) async fn get_chunk(&self, address: ChunkAddress) -> Result<Chunk> {
         info!("Getting chunk: {address:?}");
         let xorname = address.name();
-        match self
-            .network
-            .get_provided_data(RecordKey::new(xorname))
-            .await?
-        {
+        match self.network.get_kad_data(RecordKey::new(xorname)).await? {
             Ok(chunk_bytes) => Ok(Chunk::new(chunk_bytes.into())),
             Err(err) => {
                 warn!("Local internal error when trying to query chunk {xorname:?}: {err:?}",);

@@ -39,6 +39,7 @@ use libp2p::{
 
 use libp2p::{
     identity,
+    kad::KademliaStoreInserts,
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, ProtocolSupport, RequestId},
     swarm::{behaviour::toggle::Toggle, Swarm, SwarmBuilder},
@@ -47,6 +48,7 @@ use libp2p::{
 use rand::Rng;
 use sn_protocol::{
     messages::{ReplicatedData, Request, Response},
+    storage::RecordHeader,
     NetworkAddress,
 };
 use sn_record_store::{
@@ -150,6 +152,8 @@ impl SwarmDriver {
             .disjoint_query_paths(true)
             // Records never expire
             .set_record_ttl(None)
+            // // Records and ProviderRecords are filtered before inserting them into the RecordStore
+            // .set_record_filtering(KademliaStoreInserts::FilterBoth)
             // Disable provider records publication job
             .set_provider_publication_interval(None);
 
@@ -501,8 +505,9 @@ impl Network {
             .await)
     }
 
-    /// Get `key` from our Storage
-    pub async fn get_provided_data(&self, key: RecordKey) -> Result<Result<Vec<u8>>> {
+    /// Get data from the KAD network as bytes
+    /// The `RecordHeader` is stripped and only the body is returned
+    pub async fn get_kad_data(&self, key: RecordKey) -> Result<Result<Vec<u8>>> {
         let (sender, receiver) = oneshot::channel();
         self.send_swarm_cmd(SwarmCmd::GetData { key, sender })
             .await?;
@@ -510,6 +515,12 @@ impl Network {
         receiver
             .await
             .map_err(|_e| Error::InternalMsgChannelDropped)
+            .map(|response| {
+                response.map(|bytes| {
+                    // ignore the record header
+                    bytes[RecordHeader::SIZE..].to_vec()
+                })
+            })
     }
 
     /// Put data to KAD network as record
