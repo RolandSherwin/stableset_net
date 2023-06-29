@@ -96,12 +96,14 @@ impl TracingLayers {
 
             if json_output {
                 tracing_fmt::layer()
+                    .compact()
                     .json()
                     .flatten_event(true)
                     .with_writer(file_rotation)
                     .boxed()
             } else {
                 tracing_fmt::layer()
+                    .compact()
                     .with_ansi(false)
                     .with_writer(file_rotation)
                     .event_format(LogFormatter::default())
@@ -110,6 +112,7 @@ impl TracingLayers {
         } else {
             println!("Logging to stdout");
             tracing_fmt::layer()
+                .compact()
                 .with_ansi(false)
                 .with_target(false)
                 .event_format(LogFormatter::default())

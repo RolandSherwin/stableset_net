@@ -126,8 +126,6 @@ impl SwarmDriver {
         &mut self,
         event: SwarmEvent<NodeEvent, EventError>,
     ) -> Result<()> {
-        let span = info_span!("Handling a swarm event");
-        let _ = span.enter();
         match event {
             SwarmEvent::Behaviour(NodeEvent::MsgReceived(event)) => {
                 if let Err(e) = self.handle_msg(event).await {
@@ -295,6 +293,7 @@ impl SwarmDriver {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     async fn handle_kad_event(&mut self, kad_event: KademliaEvent) -> Result<()> {
         match kad_event {
             ref event @ KademliaEvent::OutboundQueryProgressed {

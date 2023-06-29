@@ -14,6 +14,7 @@ use crate::Node;
 
 impl Node {
     /// Handle a RegisterQuery
+    #[instrument(skip(self))]
     pub async fn handle_register_query(&self, query: &RegisterQuery) -> QueryResponse {
         let register = match self.get_register_from_network(query.dst()).await {
             Ok(reg) => reg,
@@ -46,6 +47,7 @@ impl Node {
     }
 
     /// Handle a RegisterCmd
+    #[instrument(skip(self))]
     pub async fn handle_register_cmd(&self, cmd: &RegisterCmd) -> Result<()> {
         match cmd {
             RegisterCmd::Create {

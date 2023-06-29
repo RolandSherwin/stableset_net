@@ -128,6 +128,7 @@ pub struct SwarmLocalState {
 }
 
 impl SwarmDriver {
+    #[instrument(skip(self))]
     pub(crate) async fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         match cmd {
             SwarmCmd::GetAllRecordAddress { sender } => {
@@ -329,6 +330,7 @@ impl SwarmDriver {
 
     /// Dials the given multiaddress. If address contains a peer ID, simultaneous
     /// dials to that peer are prevented.
+    #[instrument(skip(self))]
     pub(crate) fn dial(&mut self, mut addr: Multiaddr) -> Result<(), DialError> {
         debug!(%addr, "Dialing manually");
 

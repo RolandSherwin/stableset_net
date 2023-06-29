@@ -26,6 +26,7 @@ use std::collections::HashSet;
 
 impl Node {
     /// Validate and store a `ChunkWithPayment` to the RecordStore
+    #[instrument(skip(self))]
     pub(crate) async fn validate_and_store_chunk(
         &self,
         chunk_with_payment: ChunkWithPayment,
@@ -60,7 +61,7 @@ impl Node {
         };
 
         // finally store the Record directly into the local storage
-        debug!("Storing chunk {chunk_name:?} as Record locally");
+        debug!("Storing chunk {chunk_name:?} as Record locally, with Record key {key:?}");
         self.network.put_local_record(record).await.map_err(|err| {
             warn!("Error while locally storing Chunk as a Record{err}");
             ProtocolError::ChunkNotStored(chunk_name)
@@ -70,6 +71,7 @@ impl Node {
     }
 
     /// Validate and store a `Register` to the RecordStore
+    #[instrument(skip(self))]
     pub(crate) async fn validate_and_store_register(
         &self,
         register: Register,
@@ -113,6 +115,7 @@ impl Node {
     }
 
     /// Validate and store `Vec<SignedSpend>` to the RecordStore
+    #[instrument(skip(self))]
     pub(crate) async fn validate_and_store_spends(
         &mut self,
         signed_spends: Vec<SignedSpend>,
@@ -200,6 +203,7 @@ impl Node {
     /// stored stored to the RecordStore
     /// - Return early if overwrite attempt
     /// - Validate the provided payment proof
+    #[instrument(skip(self))]
     async fn chunk_validation(
         &self,
         chunk_with_payment: &ChunkWithPayment,
@@ -298,6 +302,7 @@ impl Node {
         Ok(Some(()))
     }
 
+    #[instrument(skip(self))]
     async fn register_validation(
         &self,
         register: &Register,
@@ -358,6 +363,7 @@ impl Node {
     /// - If incoming signed_spends.len() > 1, aggregate store them directly as they are a double spent.
     /// - If incoming signed_spends.len() == 1, then check for parent_inputs and the closest(dbc_id)
     /// for any double spend, which are then aggregated and returned.
+    #[instrument(skip(self))]
     async fn signed_spend_validation(
         &self,
         mut signed_spends: Vec<SignedSpend>,

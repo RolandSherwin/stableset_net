@@ -31,6 +31,7 @@ const REPLICATION_RANGE: usize = 8;
 impl Node {
     /// In case self is not among the closest to the chunk,
     /// replicate the chunk to its closest peers
+    #[instrument(skip(self))]
     pub(crate) async fn try_replicate_an_entry(&mut self, addr: ChunkAddress) {
         let our_address = NetworkAddress::from_peer(self.network.peer_id);
         // The address may need to be put into the `ReplicationList`,
@@ -63,6 +64,7 @@ impl Node {
     }
 
     /// Replication is triggered when the newly added peer or the dead peer was among our closest.
+    #[instrument(skip(self))]
     pub(crate) async fn try_trigger_replication(
         &mut self,
         peer: &PeerId,
@@ -189,6 +191,7 @@ impl Node {
     /// Notify a list of keys within a holder to be replicated to self.
     /// The `chunk_storage` is currently held by `swarm_driver` within `network` instance.
     /// Hence has to carry out this notification.
+    #[instrument(skip(self))]
     pub(crate) async fn replication_keys_to_fetch(
         &mut self,
         holder: NetworkAddress,
@@ -220,6 +223,7 @@ impl Node {
 
     /// Utility to send `Query::GetReplicatedData` without awaiting for the `Response` at the call
     /// site
+    #[instrument(skip(self))]
     pub(crate) async fn fetch_replication_keys_without_wait(
         &mut self,
         keys_to_fetch: Vec<(PeerId, NetworkAddress)>,
@@ -236,6 +240,7 @@ impl Node {
     }
 
     // Utility to send `Cmd::Replicate` without awaiting for the `Response` at the call site.
+    #[instrument(skip(self))]
     async fn send_replicate_cmd_without_wait(
         &mut self,
         our_address: &NetworkAddress,

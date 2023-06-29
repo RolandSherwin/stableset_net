@@ -21,6 +21,7 @@ use sn_protocol::{
 use sn_registers::Register;
 
 impl Node {
+    #[instrument(skip(self))]
     pub(crate) async fn get_chunk_from_network(&self, address: ChunkAddress) -> Result<Chunk> {
         let record = self
             .network
@@ -41,6 +42,7 @@ impl Node {
         }
     }
 
+    #[instrument(skip(self))]
     pub(crate) async fn get_register_from_network(
         &self,
         address: RegisterAddress,
@@ -64,6 +66,7 @@ impl Node {
         }
     }
 
+    #[instrument(skip(self))]
     pub(crate) async fn get_spend_from_network(&self, address: DbcAddress) -> Result<SignedSpend> {
         let record = self
             .network
@@ -101,6 +104,7 @@ impl Node {
         }
     }
 
+    #[instrument(skip(self))]
     pub(crate) async fn get_replicated_data(
         &self,
         address: NetworkAddress,

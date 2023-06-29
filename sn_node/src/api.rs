@@ -71,6 +71,7 @@ impl Node {
     /// # Errors
     ///
     /// Returns an error if there is a problem initializing the `SwarmDriver`.
+    #[instrument]
     pub async fn run(
         keypair: Option<Keypair>,
         addr: SocketAddr,
@@ -150,11 +151,9 @@ impl Node {
     ) {
         match event {
             NetworkEvent::RequestReceived { req, channel } => {
-                trace!("RequestReceived: {req:?}");
                 self.handle_request(req, channel).await;
             }
             NetworkEvent::ResponseReceived { res } => {
-                trace!("NetworkEvent::ResponseReceived {res:?}");
                 if let Err(err) = self.handle_response(res).await {
                     error!("Error while handling NetworkEvent::ResponseReceived {err:?}");
                 }
@@ -217,6 +216,7 @@ impl Node {
 
     // Handle the response that was not awaited at the call site
     async fn handle_response(&mut self, response: Response) -> Result<()> {
+        trace!("Handling response: {response:?}");
         match response {
             Response::Query(QueryResponse::GetReplicatedData(Ok((holder, replicated_data)))) => {
                 let address = match replicated_data {
@@ -303,6 +303,7 @@ impl Node {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     async fn handle_request(&mut self, request: Request, response_channel: MsgResponder) {
         trace!("Handling request: {request:?}");
         let response = match request {
@@ -312,6 +313,7 @@ impl Node {
         self.send_response(response, response_channel).await;
     }
 
+    #[instrument(skip(self))]
     async fn handle_query(&self, query: Query) -> Response {
         let resp = match query {
             Query::Register(reg_query) => self.handle_register_query(&reg_query).await,
@@ -345,6 +347,7 @@ impl Node {
         Response::Query(resp)
     }
 
+    #[instrument(skip(self))]
     async fn handle_node_cmd(&mut self, cmd: Cmd) -> Response {
         Marker::NodeCmdReceived(&cmd).log();
         let resp = match cmd {
@@ -430,6 +433,7 @@ impl Node {
         Response::Cmd(resp)
     }
 
+    #[instrument(skip(self))]
     async fn send_response(&self, resp: Response, response_channel: MsgResponder) {
         if let Err(err) = self.network.send_response(resp, response_channel).await {
             warn!("Error while sending response: {err:?}");

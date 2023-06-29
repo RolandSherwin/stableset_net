@@ -25,6 +25,7 @@ use std::{
 /// - No spend exists if len() == 0
 /// - Valid spend if len() == 1
 /// - Double spend if len() > 1
+#[instrument(skip(network))]
 pub(crate) async fn get_aggregated_spends_from_peers(
     network: &Network,
     dbc_id: DbcId,
@@ -68,6 +69,7 @@ pub(crate) async fn get_aggregated_spends_from_peers(
 /// - Making sure the DbcId match the provided one
 /// - Verifying the `spent_tx_hash`
 /// - Sorting and returning < 2 spends as output
+#[instrument(skip(spends))]
 pub(crate) fn aggregate_spends<I>(spends: I, valid_dbc_id: DbcId) -> Vec<SignedSpend>
 where
     I: IntoIterator<Item = SignedSpend>,
@@ -94,6 +96,7 @@ where
 /// Fetch all parent spends from the network and check them
 /// they should all exist as valid spends for this current spend attempt to be valid
 /// The signed_spend.dbc_id() shall exist among the parent_tx's outputs.
+#[instrument(skip(network))]
 pub(crate) async fn check_parent_spends(
     network: &Network,
     signed_spend: &SignedSpend,
@@ -141,6 +144,7 @@ pub(crate) async fn check_parent_spends(
 
 /// The src_tx is the tx where the dbc to spend, was created.
 /// The signed_spend.dbc_id() shall exist among its outputs.
+#[instrument]
 fn validate_parent_spends(
     signed_spend: &SignedSpend,
     parent_spends: BTreeSet<SignedSpend>,
@@ -170,6 +174,7 @@ fn validate_parent_spends(
 
 /// Fetch all parent spends from the network.
 /// Checks for double spend on any of the parent_input
+#[instrument(skip(network))]
 async fn get_parent_spends(
     network: &Network,
     parent_tx: &DbcTransaction,
