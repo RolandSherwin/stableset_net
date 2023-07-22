@@ -6,7 +6,7 @@
 // KIND, either express or implied. Please review the Licences for the specific language governing
 // permissions and limitations relating to use of the SAFE Network Software.
 
-use crate::{Client, Error, Result};
+use crate::{Client, ClientEvent, Error, Result};
 
 use bls::PublicKey;
 use libp2p::kad::{Record, RecordKey};
@@ -288,14 +288,19 @@ impl ClientRegister {
             }
         };
 
-        let reg_addr = register.address();
+        let reg_addr = *register.address();
         let record = Record {
             key: RecordKey::new(reg_addr.name()),
             value: try_serialize_record(&register, RecordKind::Register)?,
             publisher: None,
             expires: None,
         };
-        Ok(self.client.network.put_record(record, verify_store).await?)
+        self.client.network.put_record(record, verify_store).await?;
+
+        self.client
+            .events_channel
+            .broadcast(ClientEvent::RegisterStored(reg_addr))?;
+        Ok(())
     }
 
     // Retrieve a `Register` from the Network.

@@ -160,6 +160,7 @@ impl Client {
                     let _ = client.get_chunk(random_target).await;
                     continue;
                 }
+                Ok(_) => {}
                 Err(err) => {
                     error!("Unexpected error during client startup {err:?}");
                     println!("Unexpected error during client startup {err:?}");
@@ -285,7 +286,8 @@ impl Client {
         payment: PaymentProof,
         verify_store: bool,
     ) -> Result<()> {
-        info!("Store chunk: {:?}", chunk.address());
+        let chunk_addr = *chunk.address();
+        info!("Store chunk: {chunk_addr:?}");
         let chunk_with_payment = ChunkWithPayment { chunk, payment };
         let record = Record {
             key: RecordKey::new(chunk_with_payment.chunk.name()),
@@ -294,7 +296,10 @@ impl Client {
             expires: None,
         };
 
-        Ok(self.network.put_record(record, verify_store).await?)
+        self.network.put_record(record, verify_store).await?;
+        self.events_channel
+            .broadcast(ClientEvent::ChunkStored(chunk_addr))?;
+        Ok(())
     }
 
     /// Retrieve a `Chunk` from the kad network.
@@ -331,7 +336,11 @@ impl Client {
             publisher: None,
             expires: None,
         };
-        Ok(self.network.put_record(record, verify_store).await?)
+
+        self.network.put_record(record, verify_store).await?;
+        self.events_channel
+            .broadcast(ClientEvent::SpendStored(dbc_addr))?;
+        Ok(())
     }
 
     /// Get a dbc spend from network

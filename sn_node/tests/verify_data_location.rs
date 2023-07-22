@@ -280,11 +280,10 @@ async fn store_chunk(
             .expect("Failed to chunk bytes");
 
         println!(
-            "Paying storage for ({}) new Chunk/s of file ({} bytes) at {addr:?} in {PUT_DELAY:?}",
+            "Paying storage for ({}) new Chunk/s of file ({} bytes) at {addr:?}",
             chunks.len(),
             bytes.len()
         );
-        tokio::time::sleep(PUT_DELAY).await;
 
         let proofs = wallet_client
             .pay_for_storage(chunks.iter().map(|c| c.name()))

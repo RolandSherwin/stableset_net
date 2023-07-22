@@ -8,6 +8,8 @@
 
 use super::error::Result;
 
+use sn_protocol::storage::{ChunkAddress, DbcAddress};
+use sn_registers::RegisterAddress;
 use tokio::sync::broadcast;
 
 // Channel where events will be broadcasted by the client.
@@ -42,6 +44,12 @@ pub enum ClientEvent {
     /// No network activity has been received for a given duration
     /// we should error out
     InactiveClient(std::time::Duration),
+    /// A chunk has been stored to the network
+    ChunkStored(ChunkAddress),
+    /// A Spend has been stored to the network
+    SpendStored(DbcAddress),
+    /// A register has been stored to the network
+    RegisterStored(RegisterAddress),
 }
 
 /// Receiver Channel where users of the public API can listen to events broadcasted by the client.
