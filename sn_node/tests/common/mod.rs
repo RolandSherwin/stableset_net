@@ -78,7 +78,7 @@ pub async fn get_wallet(root_dir: &Path) -> LocalWallet {
 }
 
 pub async fn get_funded_wallet(
-    client: &Client,
+    client: Client,
     root_dir: &Path,
     amount: u64,
 ) -> Result<LocalWallet> {
@@ -88,7 +88,7 @@ pub async fn get_funded_wallet(
     let mut local_wallet = get_wallet(root_dir).await;
 
     println!("Getting {wallet_balance} tokens from the faucet...");
-    let tokens = get_tokens_from_faucet(wallet_balance, local_wallet.address(), client).await;
+    let tokens = get_tokens_from_faucet(wallet_balance, local_wallet.address(), &client).await;
     std::thread::sleep(std::time::Duration::from_secs(5));
 
     println!("Verifying the transfer from faucet...");
@@ -102,7 +102,7 @@ pub async fn get_funded_wallet(
 
 pub async fn get_client_and_wallet(root_dir: &Path, amount: u64) -> Result<(Client, LocalWallet)> {
     let client = get_client().await;
-    let local_wallet = get_funded_wallet(&client, root_dir, amount).await?;
+    let local_wallet = get_funded_wallet(client.clone(), root_dir, amount).await?;
 
     Ok((client, local_wallet))
 }

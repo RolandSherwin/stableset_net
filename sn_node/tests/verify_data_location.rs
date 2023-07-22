@@ -12,18 +12,18 @@ mod common;
 
 use assert_fs::TempDir;
 use common::{
-    node_restart,
+    get_client, get_funded_wallet, node_restart,
     safenode_proto::{safe_node_client::SafeNodeClient, NodeInfoRequest, RecordAddressesRequest},
 };
 
 use bytes::Bytes;
-use eyre::{bail, eyre, Result};
+use eyre::{eyre, Result};
 use libp2p::{
     kad::{KBucketKey, RecordKey},
     PeerId,
 };
 use rand::{rngs::OsRng, Rng};
-use sn_client::{Client, Files, WalletClient};
+use sn_client::{Client, ClientEvent, ClientEventsReceiver, Files, WalletClient};
 use sn_logging::{init_logging, LogFormat, LogOutputDest};
 use sn_networking::{sort_peers_by_key, CLOSE_GROUP_SIZE};
 use sn_protocol::storage::ChunkAddress;
@@ -31,12 +31,12 @@ use sn_transfers::wallet::LocalWallet;
 use std::{
     collections::{hash_map::Entry, BTreeSet, HashMap, HashSet},
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    sync::Arc,
     time::Duration,
 };
+use tokio::sync::RwLock;
 use tonic::Request;
 use tracing_core::Level;
-
-use crate::common::get_client_and_wallet;
 
 const NODE_COUNT: u8 = 25;
 const CHUNK_SIZE: usize = 1024;
@@ -62,6 +62,7 @@ const CHURN_COUNT: u8 = 4;
 const CHUNK_COUNT: usize = 5;
 
 type NodeIndex = u8;
+type RecordHolders = Arc<RwLock<HashMap<RecordKey, HashSet<NodeIndex>>>>;
 
 #[tokio::test(flavor = "multi_thread")]
 async fn verify_data_location() -> Result<()> {
@@ -94,20 +95,30 @@ async fn verify_data_location() -> Result<()> {
     );
 
     // set of all the node indexes that stores a record key
-    let mut record_holders = HashMap::new();
+    let record_holders = RecordHolders::default();
     let mut all_peers = get_all_peer_ids().await?;
 
     // Store chunks
     println!("Creating a client and paying wallet...");
     let paying_wallet_dir = TempDir::new()?;
-    let (client, paying_wallet) =
-        get_client_and_wallet(paying_wallet_dir.path(), PAYING_WALLET_INITIAL_BALANCE).await?;
 
-    store_chunk(client, paying_wallet, &mut record_holders, chunk_count).await?;
+    let client = get_client().await;
+
+    // spawn a task to track the stored records
+    track_client_puts(client.events_channel(), record_holders.clone()).await;
+
+    let paying_wallet = get_funded_wallet(
+        client.clone(),
+        paying_wallet_dir.path(),
+        PAYING_WALLET_INITIAL_BALANCE,
+    )
+    .await?;
+
+    store_chunk(client, paying_wallet, chunk_count).await?;
 
     // Verify data location initially
-    get_record_holder_list(&mut record_holders).await?;
-    verify_location(&mut record_holders, &all_peers).await?;
+    get_record_holder_list(record_holders.clone()).await?;
+    verify_location(record_holders.clone(), &all_peers).await?;
 
     // Churn nodes and verify the location of the data after VERIFICATION_DELAY
     let mut addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
@@ -125,7 +136,7 @@ async fn verify_data_location() -> Result<()> {
         node_restart(addr).await?;
 
         // wait for the dead peer to be removed from the RT and the replication flow to finish
-        println!("Node {node_index} has been restarted, waiting for {VERIFICATION_DELAY:?} before verification");
+        println!("\nNode {node_index} has been restarted, waiting for {VERIFICATION_DELAY:?} before verification");
         tokio::time::sleep(VERIFICATION_DELAY).await;
 
         // get the new PeerId for the current NodeIndex
@@ -138,9 +149,9 @@ async fn verify_data_location() -> Result<()> {
         all_peers[node_index as usize - 1] = peer_id;
 
         // get the new set of holders
-        get_record_holder_list(&mut record_holders).await?;
+        get_record_holder_list(record_holders.clone()).await?;
 
-        verify_location(&mut record_holders, &all_peers).await?;
+        verify_location(record_holders.clone(), &all_peers).await?;
 
         node_index += 1;
         if node_index > NODE_COUNT as u16 {
@@ -149,11 +160,9 @@ async fn verify_data_location() -> Result<()> {
     }
 }
 
-async fn get_record_holder_list(
-    record_holders: &mut HashMap<RecordKey, HashSet<NodeIndex>>,
-) -> Result<()> {
+async fn get_record_holder_list(record_holders: RecordHolders) -> Result<()> {
     // Clear the set of NodeIndex before updating with the new set
-    for (_, v) in record_holders.iter_mut() {
+    for (_, v) in record_holders.write().await.iter_mut() {
         *v = HashSet::new();
     }
     for node_index in 1..NODE_COUNT + 1 {
@@ -168,7 +177,7 @@ async fn get_record_holder_list(
 
         for bytes in response.get_ref().addresses.iter() {
             let key = RecordKey::from(bytes.clone());
-            record_holders
+            record_holders.write().await
                 .get_mut(&key)
                 .ok_or_else(|| eyre!("Key {key:?} has not been PUT to the network by the test. Please restart the local testnet"))?
                 .insert(node_index);
@@ -179,12 +188,9 @@ async fn get_record_holder_list(
 }
 
 // Verifies that the chunk is stored by the actual closest peers to the RecordKey
-async fn verify_location(
-    record_holders: &mut HashMap<RecordKey, HashSet<NodeIndex>>,
-    all_peers: &[PeerId],
-) -> Result<()> {
+async fn verify_location(record_holders: RecordHolders, all_peers: &[PeerId]) -> Result<()> {
     let mut failed = HashMap::new();
-    for (key, actual_closest_idx) in record_holders.iter() {
+    for (key, actual_closest_idx) in record_holders.read().await.iter() {
         println!("Verifying {key:?}");
         let record_key = KBucketKey::from(key.to_vec());
         let expected_closest_peers =
@@ -217,9 +223,13 @@ async fn verify_location(
                 .for_each(|peer| println!("Record {key:?} is not stored inside {peer:?}"));
         });
         println!("State of each node:");
-        record_holders.iter().for_each(|(key, node_index)| {
-            println!("Record {key:?} is currently held by node indexes {node_index:?}");
-        });
+        record_holders
+            .read()
+            .await
+            .iter()
+            .for_each(|(key, node_index)| {
+                println!("Record {key:?} is currently held by node indexes {node_index:?}");
+            });
         println!("Node index map:");
         all_peers
             .iter()
@@ -253,12 +263,7 @@ async fn get_all_peer_ids() -> Result<Vec<PeerId>> {
 }
 
 // Generate a random Chunk and store it to the Network
-async fn store_chunk(
-    client: Client,
-    paying_wallet: LocalWallet,
-    record_holders: &mut HashMap<RecordKey, HashSet<NodeIndex>>,
-    chunk_count: usize,
-) -> Result<()> {
+async fn store_chunk(client: Client, paying_wallet: LocalWallet, chunk_count: usize) -> Result<()> {
     let mut rng = OsRng;
     let mut wallet_client = WalletClient::new(client.clone(), paying_wallet);
     let file_api = Files::new(client);
@@ -299,21 +304,41 @@ async fn store_chunk(
 
         let addr = ChunkAddress::new(file_api.calculate_address(bytes.clone())?);
         let key = RecordKey::new(addr.name());
-        match file_api.upload_with_proof(bytes, &proofs).await {
-            Ok(_) => {
-                uploaded_chunks_count += 1;
-                match record_holders.entry(key.clone()) {
-                    Entry::Vacant(entry) => entry.insert(HashSet::new()),
-                    Entry::Occupied(_) => {
-                        bail!("Chunk addr {addr:?} has been inserted into the map already")
-                    }
-                };
-            }
-            Err(err) => println!("Discarding new Chunk ({addr:?}) due to error: {err:?}"),
-        }
+        file_api.upload_with_proof(bytes, &proofs).await?;
+        uploaded_chunks_count += 1;
 
         println!("Stored Chunk with {addr:?} / {key:?}");
     }
 
+    // to make sure the last chunk was stored
+    tokio::time::sleep(Duration::from_secs(10)).await;
+
     Ok(())
+}
+
+// spawn task to track stored records
+async fn track_client_puts(mut client_events: ClientEventsReceiver, record_holders: RecordHolders) {
+    let _handle = tokio::spawn(async move {
+        loop {
+            let name = match client_events.recv().await {
+                Ok(ClientEvent::ChunkStored(addr)) => Some(*addr.name()),
+                Ok(ClientEvent::SpendStored(addr)) => Some(*addr.name()),
+                Err(err) => {
+                    println!("Error while receiving client events {err:?}");
+                    None
+                }
+                _ => None,
+            };
+            if let Some(name) = name {
+                let key = RecordKey::new(&name);
+                println!("key put {key:?}");
+                match record_holders.write().await.entry(key.clone()) {
+                    Entry::Vacant(entry) => entry.insert(HashSet::new()),
+                    Entry::Occupied(_) => {
+                        panic!("key {key:?} has been inserted into the map already")
+                    }
+                };
+            }
+        }
+    });
 }

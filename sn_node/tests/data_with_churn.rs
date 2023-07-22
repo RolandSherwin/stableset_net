@@ -153,7 +153,7 @@ async fn data_availability_during_churn() -> Result<()> {
         create_registers_task(client.clone(), content.clone(), churn_period);
         let transfers_wallet_dir = TempDir::new()?;
         let transfers_wallet = get_funded_wallet(
-            &client,
+            client.clone(),
             transfers_wallet_dir.path(),
             TRANSFERS_WALLET_INITIAL_BALANCE,
         )
