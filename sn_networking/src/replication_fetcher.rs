@@ -7,9 +7,10 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 #![allow(clippy::mutable_key_type)]
 
+use itertools::Itertools;
 use libp2p::{kad::RecordKey, PeerId};
 use rand::{seq::SliceRandom, thread_rng};
-use sn_protocol::NetworkAddress;
+use sn_protocol::{NetworkAddress, PrettyPrintRecordKey};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     time::{Duration, Instant},
@@ -60,14 +61,32 @@ impl ReplicationFetcher {
         incoming_keys: Vec<NetworkAddress>,
         locally_stored_keys: &HashSet<RecordKey>,
     ) -> Vec<(RecordKey, Option<PeerId>)> {
+        let locally_stored_keys_print = locally_stored_keys
+            .iter()
+            .map(|k| PrettyPrintRecordKey::from(k.clone()))
+            .collect_vec();
+        trace!("locally_stored_keys: {locally_stored_keys_print:?}");
         self.retain_keys(locally_stored_keys);
+        trace!("add_keys {peer_id:?}, {incoming_keys:?}");
 
         // add non existing keys to the fetcher
         incoming_keys
             .into_iter()
             .filter_map(|incoming| incoming.as_record_key())
+            .inspect(|i| {
+                trace!(
+                    "Converted to record_key {:?}",
+                    PrettyPrintRecordKey::from(i.clone()),
+                )
+            })
             .filter(|incoming| !locally_stored_keys.contains(incoming))
-            .for_each(|incoming| self.add_holder_pey_key(incoming, peer_id));
+            .for_each(|incoming| {
+                trace!(
+                    "locally_stored_keys does not contain {:?}",
+                    PrettyPrintRecordKey::from(incoming.clone())
+                );
+                self.add_holder_pey_key(incoming, peer_id)
+            });
 
         self.next_keys_to_fetch()
     }
@@ -196,6 +215,10 @@ impl ReplicationFetcher {
 
     /// Add the holder for the following key
     fn add_holder_pey_key(&mut self, key: RecordKey, peer_id: PeerId) {
+        trace!(
+            "adding replication key {:?} from {peer_id:?}",
+            PrettyPrintRecordKey::from(key.clone())
+        );
         let holders = self.to_be_fetched.entry(key).or_insert(Default::default());
         let _ = holders
             .entry(peer_id)

@@ -144,7 +144,10 @@ impl SwarmDriver {
                                 if let Some(entry_distance_ilog2) =
                                     self_address.distance(key).ilog2()
                                 {
-                                    entry_distance_ilog2 <= distance_bar_ilog2
+
+                                    let within_distance_bar =  entry_distance_ilog2 <= distance_bar_ilog2;
+                                trace!("within the the distance bar is {within_distance_bar:?} for {key:?}");
+                                    within_distance_bar
                                 } else {
                                     true
                                 }
