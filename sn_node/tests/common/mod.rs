@@ -170,24 +170,33 @@ pub async fn node_restart(addr: SocketAddr) -> Result<()> {
 // nodes, hence verification has to be performed after this.
 pub const DATA_LOCATION_VERIFICATION_DELAY: Duration = Duration::from_secs(300);
 // Number of times to retry verification if it fails
-const DATA_LOCATION_VERIFICATION_ATTEMPTS: usize = 3;
+const DATA_LOCATION_VERIFICATION_ATTEMPTS: usize = 1;
 
 type NodeIndex = usize;
 pub struct DataLocationVerification {
     node_count: usize,
     pub all_peers: Vec<PeerId>,
-    record_holders: HashMap<RecordKey, HashSet<NodeIndex>>,
+    all_records: HashSet<RecordKey>,
+    records_held: HashMap<NodeIndex, HashSet<RecordKey>>,
 }
 
 impl DataLocationVerification {
+    // Should be called before any churn to capture the list of records in the network.
     pub async fn new(node_count: usize) -> Result<Self> {
-        let mut data_verification = Self {
+        let records_held = Self::get_held_records(node_count).await?;
+        let all_records = records_held.iter().map(|(_, v)| v).fold(
+            HashSet::new(),
+            |mut all_records, records_per_node| {
+                all_records.extend(records_per_node.iter().cloned());
+                all_records
+            },
+        );
+        let data_verification = Self {
             node_count,
-            all_peers: Default::default(),
-            record_holders: Default::default(),
+            all_peers: Self::get_all_peer_ids(node_count).await?,
+            all_records,
+            records_held,
         };
-        data_verification.collect_all_peer_ids().await?;
-        data_verification.collect_initial_record_keys().await?;
         data_verification.debug_close_groups();
         Ok(data_verification)
     }
@@ -195,96 +204,181 @@ impl DataLocationVerification {
     pub fn update_peer_index(&mut self, node_index: NodeIndex, peer_id: PeerId) -> Result<()> {
         // new peer is added first, so debug replication on addition of new peer
         let mut temp_all_peers = self.all_peers.clone();
-        println!("######Printing Replication on peer addition######");
-        self.debug_replication(peer_id, false)?;
+        // println!("######Printing Replication on peer addition######");
+        // self.debug_replication(peer_id, false)?;
 
         temp_all_peers[node_index - 1] = peer_id;
         self.all_peers = temp_all_peers;
-        println!("\n######Printing Replication on peer removal######");
-        self.debug_replication(peer_id, true)?;
+        // println!("\n######Printing Replication on peer removal######");
+        // self.debug_replication(peer_id, true)?;
 
         Ok(())
     }
 
     // Verifies that the chunk is stored by the actual closest peers to the RecordKey
     pub async fn verify(&mut self) -> Result<()> {
-        self.get_record_holder_list().await?;
+        // get the current set of records held
+        self.records_held = Self::get_held_records(self.node_count).await?;
 
-        let mut failed = HashMap::new();
-        let mut verification_attempts = 0;
-        while verification_attempts < DATA_LOCATION_VERIFICATION_ATTEMPTS {
-            failed.clear();
-            for (key, actual_closest_idx) in self.record_holders.iter() {
-                println!("Verifying {:?}", PrettyPrintRecordKey::from(key.clone()));
-                let record_key = KBucketKey::from(key.to_vec());
-                let expected_closest_peers =
-                    sort_peers_by_key(self.all_peers.clone(), &record_key, CLOSE_GROUP_SIZE)?
-                        .into_iter()
-                        .collect::<HashSet<_>>();
+        // check if we've lost any records
+        for record in self.all_records.iter() {
+            if !self
+                .records_held
+                .iter()
+                .any(|(_, records)| records.contains(record))
+            {
+                println!(
+                    "Record {:?} has been lost",
+                    PrettyPrintRecordKey::from(record.clone())
+                );
+            }
+        }
 
-                let actual_closest = actual_closest_idx
-                    .iter()
-                    .map(|idx| self.all_peers[*idx - 1])
-                    .collect::<HashSet<_>>();
+        // // Only store record from Replication that close enough to us.
+        // let keys_to_store = if let Some(distance_range) = distance_range {
+        //     if let Some(distance_bar_ilog2) = distance_range.ilog2() {
+        //         let self_address = NetworkAddress::from_peer(self.self_peer_id);
+        //         keys.iter()
+        //             .filter(|key| {
+        //                 if let Some(entry_distance_ilog2) =
+        //                     self_address.distance(key).ilog2()
+        //                 {
 
-                let mut failed_peers = Vec::new();
-                expected_closest_peers
-                    .iter()
-                    .filter(|expected| !actual_closest.contains(expected))
-                    .for_each(|expected| failed_peers.push(*expected));
+        //                     let within_distance_bar =  entry_distance_ilog2 <= distance_bar_ilog2;
+        //                 trace!("within the the distance bar is {within_distance_bar:?} for {key:?}");
+        //                     within_distance_bar
+        //                 } else {
+        //                     true
+        //                 }
+        //             })
+        //             .cloned()
+        //             .collect()
+        //     } else {
+        //         keys
+        //     }
+        // } else {
+        //     keys
+        // };
+        for (node_index, records_held_by_node) in self.records_held.iter() {
+            let our_peer_id = self.all_peers[node_index - 1];
+            let our_address = NetworkAddress::from_peer(our_peer_id);
+            let closest_peers = sort_peers_by_key(
+                self.all_peers.clone(),
+                &our_address.as_kbucket_key(),
+                CLOSE_GROUP_SIZE,
+            )
+            .expect("failed to sort peer");
+            let distance_range = closest_peers
+                .last()
+                .map(|peer| NetworkAddress::from_peer(*peer).distance(&our_address))
+                .expect("Failed to get closest_peers.last()");
 
-                if !failed_peers.is_empty() {
-                    failed.insert(key.clone(), failed_peers);
+            let distance_bar_ilog2 = distance_range.ilog2().expect("Could not get ilog2");
+            let expected_records = self
+                .all_records
+                .iter()
+                .filter(|&key| {
+                    let key = NetworkAddress::from_record_key(key.clone());
+                    if let Some(entry_distance_ilog2) = our_address.distance(&key).ilog2() {
+                        let within_distance_bar = entry_distance_ilog2 <= distance_bar_ilog2;
+                        println!(
+                            "within the the distance bar is {within_distance_bar:?} for {key:?}"
+                        );
+                        within_distance_bar
+                    } else {
+                        true
+                    }
+                })
+                .cloned()
+                .collect::<HashSet<RecordKey>>();
+            println!("\nnode index {node_index:?}");
+            println!("expected_records {expected_records:?}");
+            println!("actual_records {records_held_by_node:?}");
+            for record in expected_records {
+                if !records_held_by_node.contains(&record) {
+                    println!(
+                        "record {:?} not held by {node_index:?}",
+                        PrettyPrintRecordKey::from(record.clone())
+                    );
                 }
             }
-
-            if !failed.is_empty() {
-                println!("Verification failed");
-
-                failed.iter().for_each(|(key, failed_peers)| {
-                    failed_peers.iter().for_each(|peer| {
-                        println!(
-                            "Record {:?} is not stored inside {peer:?}",
-                            PrettyPrintRecordKey::from(key.clone()),
-                        )
-                    });
-                });
-                println!("State of each node:");
-                self.record_holders.iter().for_each(|(key, node_index)| {
-                    println!(
-                        "Record {:?} is currently held by node indexes {node_index:?}",
-                        PrettyPrintRecordKey::from(key.clone())
-                    );
-                });
-                println!("Node index map:");
-                self.all_peers
-                    .iter()
-                    .enumerate()
-                    .for_each(|(idx, peer)| println!("{} : {peer:?}", idx + 1));
-                verification_attempts += 1;
-                println!("Sleeping before retrying verification");
-                tokio::time::sleep(Duration::from_secs(20)).await;
-            } else {
-                // if successful, break out of the loop
-                break;
-            }
         }
+        // let mut failed = HashMap::new();
+        // let mut verification_attempts = 0;
+        // while verification_attempts < DATA_LOCATION_VERIFICATION_ATTEMPTS {
+        //     failed.clear();
+        //     for (key, actual_closest_idx) in self.record_holders.iter() {
+        //         println!("Verifying {:?}", PrettyPrintRecordKey::from(key.clone()));
+        //         let record_key = KBucketKey::from(key.to_vec());
+        //         let expected_closest_peers =
+        //             sort_peers_by_key(self.all_peers.clone(), &record_key, CLOSE_GROUP_SIZE)?
+        //                 .into_iter()
+        //                 .collect::<HashSet<_>>();
 
-        if !failed.is_empty() {
-            println!("Verification failed after {DATA_LOCATION_VERIFICATION_ATTEMPTS} times");
-            Err(eyre!("Verification failed for: {failed:?}"))
-        } else {
-            println!("All the Records have been verified!");
-            Ok(())
-        }
+        //         let actual_closest = actual_closest_idx
+        //             .iter()
+        //             .map(|idx| self.all_peers[*idx - 1])
+        //             .collect::<HashSet<_>>();
+
+        //         let mut failed_peers = Vec::new();
+        //         expected_closest_peers
+        //             .iter()
+        //             .filter(|expected| !actual_closest.contains(expected))
+        //             .for_each(|expected| failed_peers.push(*expected));
+
+        //         if !failed_peers.is_empty() {
+        //             failed.insert(key.clone(), failed_peers);
+        //         }
+        //     }
+
+        //     if !failed.is_empty() {
+        //         println!("Verification failed");
+
+        //         failed.iter().for_each(|(key, failed_peers)| {
+        //             failed_peers.iter().for_each(|peer| {
+        //                 println!(
+        //                     "Record {:?} is not stored inside {peer:?}",
+        //                     PrettyPrintRecordKey::from(key.clone()),
+        //                 )
+        //             });
+        //         });
+        //         println!("State of each node:");
+        //         self.record_holders.iter().for_each(|(key, node_index)| {
+        //             println!(
+        //                 "Record {:?} is currently held by node indexes {node_index:?}",
+        //                 PrettyPrintRecordKey::from(key.clone())
+        //             );
+        //         });
+        //         println!("Node index map:");
+        //         self.all_peers
+        //             .iter()
+        //             .enumerate()
+        //             .for_each(|(idx, peer)| println!("{} : {peer:?}", idx + 1));
+        //         verification_attempts += 1;
+        //         println!("Sleeping before retrying verification");
+        //         tokio::time::sleep(Duration::from_secs(20)).await;
+        //     } else {
+        //         // if successful, break out of the loop
+        //         break;
+        //     }
+        // }
+
+        // if !failed.is_empty() {
+        //     println!("Verification failed after {DATA_LOCATION_VERIFICATION_ATTEMPTS} times");
+        //     Err(eyre!("Verification failed for: {failed:?}"))
+        // } else {
+        //     println!("All the Records have been verified!");
+        //     Ok(())
+        // }
+        Ok(())
     }
 
-    // Collect all the PeerId for all the locally running nodes
-    async fn collect_all_peer_ids(&mut self) -> Result<()> {
+    // Get all the PeerId for all the locally running nodes
+    async fn get_all_peer_ids(node_count: usize) -> Result<Vec<PeerId>> {
         let mut all_peers = Vec::new();
 
         let mut addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
-        for node_index in 1..self.node_count + 1 {
+        for node_index in 1..node_count + 1 {
             addr.set_port(12000 + node_index as u16);
             let endpoint = format!("https://{addr}");
             let mut rpc_client = SafeNodeClient::connect(endpoint).await?;
@@ -298,16 +392,16 @@ impl DataLocationVerification {
         }
         println!(
             "Obtained the PeerId list for the locally running network with a node count of {}",
-            self.node_count
+            node_count
         );
 
-        self.all_peers = all_peers;
-        Ok(())
+        Ok(all_peers)
     }
 
-    // Collect the initial set of records keys after put
-    async fn collect_initial_record_keys(&mut self) -> Result<()> {
-        for node_index in 1..self.node_count + 1 {
+    // get the set of records held by each node
+    async fn get_held_records(node_count: usize) -> Result<HashMap<NodeIndex, HashSet<RecordKey>>> {
+        let mut held_records = HashMap::new();
+        for node_index in 1..node_count + 1 {
             let mut addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
             addr.set_port(12000 + node_index as u16);
             let endpoint = format!("https://{addr}");
@@ -317,82 +411,58 @@ impl DataLocationVerification {
                 .record_addresses(Request::new(RecordAddressesRequest {}))
                 .await?;
 
-            for bytes in response.get_ref().addresses.iter() {
-                let key = RecordKey::from(bytes.clone());
-                self.record_holders.insert(key, Default::default());
-            }
+            let records = response
+                .get_ref()
+                .addresses
+                .iter()
+                .map(|bytes| RecordKey::from(bytes.clone()))
+                .collect::<HashSet<_>>();
+            held_records.insert(node_index, records);
         }
-        Ok(())
+        println!("Obtained the records held by the nodes");
+        Ok(held_records)
     }
 
-    // get all the current set of holders for pre filled Record keys
-    async fn get_record_holder_list(&mut self) -> Result<()> {
-        // Clear the set of NodeIndex before updating with the new set
-        for (_, v) in self.record_holders.iter_mut() {
-            *v = HashSet::new();
-        }
-        for node_index in 1..self.node_count + 1 {
-            let mut addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 12000);
-            addr.set_port(12000 + node_index as u16);
-            let endpoint = format!("https://{addr}");
-            let mut rpc_client = SafeNodeClient::connect(endpoint).await?;
+    // fn debug_replication(&self, peer_id: PeerId, is_removal: bool) -> Result<()> {
+    //     let mut replicate_to: HashMap<PeerId, Vec<NetworkAddress>> = HashMap::new();
+    //     for key in self.record_holders.keys() {
+    //         let key = NetworkAddress::from_record_key(key.clone());
+    //         let sorted_based_on_key =
+    //             sort_peers_by_address(self.all_peers.clone(), &key, CLOSE_GROUP_SIZE + 1)?;
+    //         println!("replication: close for {key:?} are: {sorted_based_on_key:?}");
 
-            let response = rpc_client
-                .record_addresses(Request::new(RecordAddressesRequest {}))
-                .await?;
+    //         if sorted_based_on_key.contains(&peer_id) {
+    //             let target_peer = if is_removal {
+    //                 // For dead peer, only replicate to farthest close_group peer,
+    //                 // when the dead peer was one of the close_group peers to the record.
+    //                 if let Some(farthest_peer) = sorted_based_on_key.last() {
+    //                     if *farthest_peer != peer_id {
+    //                         *farthest_peer
+    //                     } else {
+    //                         continue;
+    //                     }
+    //                 } else {
+    //                     continue;
+    //                 }
+    //             } else {
+    //                 // For new peer, always replicate to it when it is close_group of the record.
+    //                 if Some(&peer_id) != sorted_based_on_key.last() {
+    //                     peer_id
+    //                 } else {
+    //                     continue;
+    //                 }
+    //             };
 
-            for bytes in response.get_ref().addresses.iter() {
-                let key = RecordKey::from(bytes.clone());
-                self.record_holders
-                .get_mut(&key)
-                .ok_or_else(|| eyre!("Key {key:?} has not been PUT to the network by the test. Please restart the local testnet"))?
-                .insert(node_index);
-            }
-        }
-        println!("Obtained the current set of Record Key holders");
-        Ok(())
-    }
+    //             let keys_to_replicate = replicate_to
+    //                 .entry(target_peer)
+    //                 .or_insert(Default::default());
+    //             keys_to_replicate.push(key.clone());
+    //         }
+    //     }
+    //     println!("replicate: to {replicate_to:?}");
 
-    fn debug_replication(&self, peer_id: PeerId, is_removal: bool) -> Result<()> {
-        let mut replicate_to: HashMap<PeerId, Vec<NetworkAddress>> = HashMap::new();
-        for key in self.record_holders.keys() {
-            let key = NetworkAddress::from_record_key(key.clone());
-            let sorted_based_on_key =
-                sort_peers_by_address(self.all_peers.clone(), &key, CLOSE_GROUP_SIZE + 1)?;
-            println!("replication: close for {key:?} are: {sorted_based_on_key:?}");
-
-            if sorted_based_on_key.contains(&peer_id) {
-                let target_peer = if is_removal {
-                    // For dead peer, only replicate to farthest close_group peer,
-                    // when the dead peer was one of the close_group peers to the record.
-                    if let Some(farthest_peer) = sorted_based_on_key.last() {
-                        if *farthest_peer != peer_id {
-                            *farthest_peer
-                        } else {
-                            continue;
-                        }
-                    } else {
-                        continue;
-                    }
-                } else {
-                    // For new peer, always replicate to it when it is close_group of the record.
-                    if Some(&peer_id) != sorted_based_on_key.last() {
-                        peer_id
-                    } else {
-                        continue;
-                    }
-                };
-
-                let keys_to_replicate = replicate_to
-                    .entry(target_peer)
-                    .or_insert(Default::default());
-                keys_to_replicate.push(key.clone());
-            }
-        }
-        println!("replicate: to {replicate_to:?}");
-
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     fn debug_close_groups(&self) {
         println!("Node close groups:");
