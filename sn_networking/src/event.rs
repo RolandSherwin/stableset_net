@@ -132,8 +132,6 @@ pub enum NetworkEvent {
     PeerAdded(PeerId),
     // Peer has been removed from the Routing Table
     PeerRemoved(PeerId),
-    /// The following members have been newly included in our close group
-    CloseGroupUpdated(Vec<PeerId>),
     /// The Records for the these keys are to be fetched from the provided Peer or from the network
     KeysForReplication(Vec<(RecordKey, Option<PeerId>)>),
     /// Started listening on a new address
@@ -299,9 +297,7 @@ impl SwarmDriver {
                 {
                     self.send_event(NetworkEvent::PeerRemoved(*dead_peer.node.key.preimage()));
                     self.log_kbuckets(&failed_peer_id);
-                    if let Some(new_members) = self.check_for_change_in_our_close_group() {
-                        self.send_event(NetworkEvent::CloseGroupUpdated(new_members));
-                    }
+                    let _ = self.check_for_change_in_our_close_group();
                 }
             }
             SwarmEvent::IncomingConnectionError { .. } => {}
@@ -488,9 +484,7 @@ impl SwarmDriver {
                     self.send_event(NetworkEvent::PeerRemoved(peer));
                     self.log_kbuckets(&peer);
                 }
-                if let Some(new_members) = self.check_for_change_in_our_close_group() {
-                    self.send_event(NetworkEvent::CloseGroupUpdated(new_members));
-                }
+                let _ = self.check_for_change_in_our_close_group();
             }
             KademliaEvent::InboundRequest {
                 request: InboundRequest::PutRecord { .. },
