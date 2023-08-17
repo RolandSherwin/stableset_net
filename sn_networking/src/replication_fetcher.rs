@@ -7,6 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 #![allow(clippy::mutable_key_type)]
 
+use crate::{sort_peers_by_address, CLOSE_GROUP_SIZE};
 use libp2p::{kad::RecordKey, PeerId};
 use rand::{seq::SliceRandom, thread_rng};
 use sn_protocol::NetworkAddress;
@@ -42,8 +43,10 @@ pub(crate) enum HolderStatus {
     OnGoing,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct ReplicationFetcher {
+    self_peer_id: PeerId,
+    accumulate_majority: HashMap<RecordKey, HashSet<PeerId>>,
     to_be_fetched: HashMap<
         RecordKey,
         BTreeMap<PeerId, (ReplicationRequestSentTime, HolderStatus, FailedAttempts)>,
@@ -52,22 +55,95 @@ pub(crate) struct ReplicationFetcher {
 }
 
 impl ReplicationFetcher {
+    pub(crate) fn new(self_peer_id: PeerId) -> Self {
+        Self {
+            self_peer_id,
+            accumulate_majority: Default::default(),
+            to_be_fetched: Default::default(),
+            on_going_fetches: Default::default(),
+        }
+    }
+
+    pub(crate) fn accumulate_majority(
+        &mut self,
+        from_peer: PeerId,
+        incoming_keys: Vec<NetworkAddress>,
+        locally_stored_keys: &HashSet<RecordKey>,
+    ) -> Option<HashSet<RecordKey>> {
+        self.retain_keys(locally_stored_keys);
+
+        // add non existing keys to be accumulated; the returned list contains the keys that have reached majority
+        let majority_reached = incoming_keys
+            .into_iter()
+            .filter_map(|incoming| incoming.as_record_key())
+            .filter(|incoming| !locally_stored_keys.contains(incoming))
+            .filter(|incoming| self.accumulate_single_key(&incoming, from_peer))
+            .collect::<HashSet<_>>();
+
+        if !majority_reached.is_empty() {
+            Some(majority_reached)
+        } else {
+            None
+        }
+    }
+
+    // A close target doesn't falls into the close peers range:
+    // For example, a node b11111X has an RT: [(1, b1111), (2, b111), (5, b11), (9, b1), (7, b0)]
+    // Then for a target bearing b011111 as prefix, all nodes in (7, b0) are its close_group peers.
+    // Then the node b11111X. But b11111X's close_group peers [(1, b1111), (2, b111), (5, b11)]
+    // are none among target b011111's close range.
+    // Hence, the ilog2 calculation based on close_range can't cover such case.
+    // And have to sort all nodes to figure out whether self is among the close_group to the target.
+    pub(crate) fn perform_checks_before_fetch(
+        &self,
+        majority_acquired_keys: HashSet<RecordKey>,
+        all_peers: Vec<PeerId>,
+    ) -> Option<HashSet<RecordKey>> {
+        let to_be_fetched = majority_acquired_keys
+            .into_iter()
+            .filter(|key| {
+                if all_peers.len() <= CLOSE_GROUP_SIZE + 2 {
+                    return true;
+                }
+
+                // Margin of 2 to allow our RT being bit lagging.
+                match sort_peers_by_address(
+                    all_peers.clone(),
+                    &NetworkAddress::from_record_key(key.clone()),
+                    CLOSE_GROUP_SIZE + 2,
+                ) {
+                    Ok(close_group) => close_group.contains(&self.self_peer_id),
+                    Err(err) => {
+                        warn!("Can't get sorted peers for {key:?} with error {err:?}");
+                        true
+                    }
+                }
+            })
+            .collect::<HashSet<_>>();
+        if !to_be_fetched.is_empty() {
+            Some(to_be_fetched)
+        } else {
+            None
+        }
+    }
+
     // Adds the non existing incoming keys from the peer to the fetcher. Returns the next set of keys that has to be
     // fetched from the peer/network.
     pub(crate) fn add_keys(
         &mut self,
-        peer_id: PeerId,
+        from_peer: PeerId,
         incoming_keys: Vec<NetworkAddress>,
         locally_stored_keys: &HashSet<RecordKey>,
+        all_local_peers: Vec<PeerId>,
     ) -> Vec<(RecordKey, Option<PeerId>)> {
         self.retain_keys(locally_stored_keys);
 
-        // add non existing keys to the fetcher
-        incoming_keys
-            .into_iter()
-            .filter_map(|incoming| incoming.as_record_key())
-            .filter(|incoming| !locally_stored_keys.contains(incoming))
-            .for_each(|incoming| self.add_holder_pey_key(incoming, peer_id));
+        // // add non existing keys to the fetcher
+        // incoming_keys
+        //     .into_iter()
+        //     .filter_map(|incoming| incoming.as_record_key())
+        //     .filter(|incoming| !locally_stored_keys.contains(incoming))
+        //     .for_each(|incoming| self.accumulate_single_key(incoming, from_peer));
 
         self.next_keys_to_fetch()
     }
@@ -195,11 +271,14 @@ impl ReplicationFetcher {
     }
 
     /// Add the holder for the following key
-    fn add_holder_pey_key(&mut self, key: RecordKey, peer_id: PeerId) {
-        let holders = self.to_be_fetched.entry(key).or_insert(Default::default());
-        let _ = holders
-            .entry(peer_id)
-            .or_insert((Instant::now(), HolderStatus::Pending, 0));
+    fn accumulate_single_key(&mut self, key: &RecordKey, peer_id: PeerId) -> bool {
+        let holders = self
+            .accumulate_majority
+            .entry(*key)
+            .or_insert(Default::default());
+        let _ = holders.insert(peer_id);
+
+        holders.len() > CLOSE_GROUP_SIZE / 2
     }
 }
 
@@ -213,7 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_from_the_network_if_we_cannot_fetch_from_peer() -> Result<()> {
-        let mut replication_fetcher = ReplicationFetcher::default();
+        let mut replication_fetcher = ReplicationFetcher::new(PeerId::random());
         let locally_stored_keys = HashSet::new();
 
         let random_data: Vec<u8> = (0..50).map(|_| rand::random::<u8>()).collect();
@@ -247,7 +326,7 @@ mod tests {
 
     #[tokio::test]
     async fn try_with_multiple_peers_before_fetching_from_network() -> Result<()> {
-        let mut replication_fetcher = ReplicationFetcher::default();
+        let mut replication_fetcher = ReplicationFetcher::new(PeerId::random());
         let locally_stored_keys = HashSet::new();
         let mut already_fetched_from = HashSet::new();
 
@@ -313,7 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_max_parallel_fetches() -> Result<()> {
-        let mut replication_fetcher = ReplicationFetcher::default();
+        let mut replication_fetcher = ReplicationFetcher::new(PeerId::random());
         let locally_stored_keys = HashSet::new();
 
         let peer = PeerId::random();

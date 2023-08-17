@@ -130,13 +130,6 @@ impl SwarmDriver {
     pub(crate) fn handle_cmd(&mut self, cmd: SwarmCmd) -> Result<(), Error> {
         match cmd {
             SwarmCmd::AddKeysToReplicationFetcher { peer, keys } => {
-                // Only store record from Replication that close enough to us.
-                let all_peers = self.get_all_local_peers();
-                let keys_to_store = keys
-                    .iter()
-                    .filter(|key| self.is_in_close_range(key, all_peers.clone()))
-                    .cloned()
-                    .collect();
                 #[allow(clippy::mutable_key_type)]
                 let all_keys = self
                     .swarm
@@ -144,11 +137,17 @@ impl SwarmDriver {
                     .kademlia
                     .store_mut()
                     .record_addresses_ref();
-                let keys_to_fetch =
-                    self.replication_fetcher
-                        .add_keys(peer, keys_to_store, all_keys);
-                if !keys_to_fetch.is_empty() {
-                    self.send_event(NetworkEvent::KeysForReplication(keys_to_fetch));
+                if let Some(acquired_majority) = self
+                    .replication_fetcher
+                    .accumulate_majority(peer, keys, all_keys)
+                {
+                    let all_peers = self.get_all_local_peers();
+                    if let Some(keys_to_fetch) = self
+                        .replication_fetcher
+                        .perform_checks_before_fetch(acquired_majority, all_peers)
+                    {
+                        self.send_event(NetworkEvent::KeysForReplication(keys_to_fetch));
+                    }
                 }
             }
             SwarmCmd::Bootstrap => {
@@ -207,12 +206,7 @@ impl SwarmDriver {
                     .store_mut()
                     .put_verified(record)
                 {
-                    Ok(_) => {
-                        let new_keys_to_fetch = self.replication_fetcher.notify_about_new_put(key);
-                        if !new_keys_to_fetch.is_empty() {
-                            self.send_event(NetworkEvent::KeysForReplication(new_keys_to_fetch));
-                        }
-                    }
+                    Ok(_) => {}
                     Err(err) => return Err(err.into()),
                 };
             }
@@ -355,27 +349,5 @@ impl SwarmDriver {
         };
 
         self.swarm.dial(opts)
-    }
-
-    // A close target doesn't falls into the close peers range:
-    // For example, a node b11111X has an RT: [(1, b1111), (2, b111), (5, b11), (9, b1), (7, b0)]
-    // Then for a target bearing b011111 as prefix, all nodes in (7, b0) are its close_group peers.
-    // Then the node b11111X. But b11111X's close_group peers [(1, b1111), (2, b111), (5, b11)]
-    // are none among target b011111's close range.
-    // Hence, the ilog2 calculation based on close_range cann't cover such case.
-    // And have to sort all nodes to figure out whether self is among the close_group to the target.
-    fn is_in_close_range(&self, target: &NetworkAddress, all_peers: Vec<PeerId>) -> bool {
-        if all_peers.len() <= CLOSE_GROUP_SIZE + 2 {
-            return true;
-        }
-
-        // Margin of 2 to allow our RT being bit lagging.
-        match sort_peers_by_address(all_peers, target, CLOSE_GROUP_SIZE + 2) {
-            Ok(close_group) => close_group.contains(&self.self_peer_id),
-            Err(err) => {
-                warn!("Cann't get sorted peers for {target:?} with error {err:?}");
-                true
-            }
-        }
     }
 }

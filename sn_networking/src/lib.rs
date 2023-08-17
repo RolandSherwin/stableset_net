@@ -397,7 +397,7 @@ impl SwarmDriver {
             pending_get_closest_peers: Default::default(),
             pending_requests: Default::default(),
             pending_get_record: Default::default(),
-            replication_fetcher: Default::default(),
+            replication_fetcher: ReplicationFetcher::new(peer_id),
             local,
             // We use 63 here, as in practice the capacity will be rounded to the nearest 2^n-1.
             // Source: https://users.rust-lang.org/t/the-best-ring-buffer-library/58489/8

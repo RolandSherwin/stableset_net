@@ -133,7 +133,7 @@ pub enum NetworkEvent {
     /// The following members have been newly included in our close group
     CloseGroupUpdated(Vec<PeerId>),
     /// The Records for the these keys are to be fetched from the provided Peer or from the network
-    KeysForReplication(Vec<(RecordKey, Option<PeerId>)>),
+    KeysForReplication(HashSet<RecordKey>),
     /// Started listening on a new address
     NewListenAddr(Multiaddr),
     /// AutoNAT status changed
@@ -164,9 +164,9 @@ impl Debug for NetworkEvent {
             NetworkEvent::KeysForReplication(list) => {
                 let pretty_list: Vec<_> = list
                     .iter()
-                    .map(|(key, peer_id)| {
+                    .map(|key| {
                         let pretty_key = PrettyPrintRecordKey::from(key.clone());
-                        (pretty_key, *peer_id)
+                        pretty_key
                     })
                     .collect();
                 write!(f, "NetworkEvent::KeysForReplication({pretty_list:?})")
