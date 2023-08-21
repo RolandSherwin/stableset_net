@@ -271,6 +271,7 @@ fn get_logging_targets(logging_env_value: &str) -> Result<Vec<(String, Level)>> 
                 ("sn_build_info".to_string(), Level::TRACE),
                 ("sn_cli".to_string(), Level::TRACE),
                 ("sn_client".to_string(), Level::TRACE),
+                ("sn_fault_detection".to_string(), Level::TRACE),
                 ("sn_logging".to_string(), Level::TRACE),
                 ("sn_networking".to_string(), Level::TRACE),
                 ("sn_node".to_string(), Level::TRACE),

@@ -3798,6 +3798,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sn_fault_detection"
+version = "0.1.0"
+dependencies = [
+ "libp2p",
+ "sn_networking",
+ "sn_protocol",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "sn_logging"
 version = "0.2.4"
 dependencies = [
@@ -3874,6 +3885,7 @@ dependencies = [
  "sn_build_info",
  "sn_client",
  "sn_dbc",
+ "sn_fault_detection",
  "sn_logging",
  "sn_networking",
  "sn_peers_acquisition",

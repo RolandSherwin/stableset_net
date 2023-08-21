@@ -50,6 +50,7 @@ sn_build_info = { path="../sn_build_info", version = "0.1.2" }
 sn_peers_acquisition= { path="../sn_peers_acquisition", version = "0.1.4" }
 sn_dbc = { version = "19.1.1", features = ["serdes"] }
 sn_client = { path = "../sn_client", version = "0.87.22" }
+sn_fault_detection = { path = "../sn_fault_detection", version = "0.1.0" }
 sn_logging = { path = "../sn_logging", version = "0.2.4" }
 sn_networking = { path = "../sn_networking", version = "0.4.23" }
 sn_protocol = { path = "../sn_protocol", version = "0.5.2" }

@@ -9,6 +9,7 @@
 use super::{error::Result, event::NodeEventsChannel, Marker, Network, Node, NodeEvent};
 use libp2p::{autonat::NatStatus, identity::Keypair, Multiaddr, PeerId};
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use sn_fault_detection::FaultDetection;
 use sn_networking::{MsgResponder, NetworkEvent, SwarmDriver, SwarmLocalState};
 use sn_protocol::{
     error::Error as ProtocolError,
@@ -143,6 +144,8 @@ impl Node {
                 }
             }
         });
+
+        FaultDetection::new(network.clone()).run();
 
         Ok(RunningNode {
             network,
