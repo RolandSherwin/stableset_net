@@ -2,7 +2,7 @@ name: Check before merge
 
 on:
   # tests must run for a PR to be valid and pass merge queue muster
-  # 2
+  # 3
   # on main, we want to know that all commits are passing at a glance, any deviation should help bisecting errors
   # the merge run checks should show on master and enable this clear test/passing history
   merge_group:
