@@ -15,6 +15,7 @@ pub mod error;
 pub mod messages;
 /// Storage types for spends, chunks and registers.
 pub mod storage;
+pub mod test_utils;
 
 use self::storage::{ChunkAddress, RegisterAddress, SpendAddress};
 use bytes::Bytes;
