@@ -39,10 +39,10 @@ use tokio::{
     task::spawn,
 };
 
-/// Expected topic name where notifications of transfers are sent on.
+/// Expected topic name where notifications of royalty transfers are sent on.
 /// The notification msg is expected to contain the serialised public key, followed by the
 /// serialised transfer info encrypted against the referenced public key.
-pub const TRANSFER_NOTIF_TOPIC: &str = "TRANSFER_NOTIFICATION";
+pub const ROYALTY_TRANSFER_NOTIF_TOPIC: &str = "ROYALTY_TRANSFER_NOTIFICATION";
 
 /// Interval to trigger replication on a random close_group peer
 const PERIODIC_REPLICATION_INTERVAL: Duration = Duration::from_secs(30);
@@ -141,10 +141,6 @@ impl NodeBuilder {
 
         // Run the node
         node.run(swarm_driver, network_event_receiver);
-        // subscribe to receive transfer notifications over gossipsub topic TRANSFER_NOTIF_TOPIC
-        running_node
-            .subscribe_to_topic(TRANSFER_NOTIF_TOPIC.to_string())
-            .map(|()| info!("Node has been subscribed to gossipsub topic '{TRANSFER_NOTIF_TOPIC}' to receive network royalties payments notifications."))?;
 
         Ok(running_node)
     }
@@ -385,8 +381,10 @@ impl Node {
             }
             NetworkEvent::GossipsubMsgReceived { topic, msg }
             | NetworkEvent::GossipsubMsgPublished { topic, msg } => {
+                trace!("Received a gossip msg for the topic of {topic}");
+
                 if self.events_channel.receiver_count() > 0 {
-                    if topic == TRANSFER_NOTIF_TOPIC {
+                    if topic == ROYALTY_TRANSFER_NOTIF_TOPIC {
                         // this is expected to be a notification of a transfer which we treat specially,
                         // and we try to decode it only if it's referring to a PK the user is interested in
                         if let Some(filter_pk) = self.transfer_notifs_filter {

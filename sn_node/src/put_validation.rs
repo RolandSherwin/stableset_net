@@ -8,7 +8,7 @@
 
 use crate::{
     node::Node,
-    node::TRANSFER_NOTIF_TOPIC,
+    node::ROYALTY_TRANSFER_NOTIF_TOPIC,
     spends::{aggregate_spends, check_parent_spends},
     Marker,
 };
@@ -526,7 +526,8 @@ impl Node {
             ));
         }
 
-        // publish a notification over gossipsub topic TRANSFER_NOTIF_TOPIC for the network royalties payment.
+        // publish a notification over gossipsub topic ROYALTY_TRANSFER_NOTIF_TOPIC
+        // for the network royalties payment.
         let royalties_pk = *NETWORK_ROYALTIES_PK;
         trace!("Publishing a royalties transfer notification over gossipsub for record {pretty_key} and beneficiary {royalties_pk:?}");
         let royalties_pk_bytes = royalties_pk.to_bytes();
@@ -539,7 +540,7 @@ impl Node {
             match bincode::serialize_into(&mut msg, &royalties_cash_notes_r) {
                 Ok(_) => {
                     let msg = msg.into_inner().freeze();
-                    if let Err(err) = self.network.publish_on_topic(TRANSFER_NOTIF_TOPIC.to_string(), msg) {
+                    if let Err(err) = self.network.publish_on_topic(ROYALTY_TRANSFER_NOTIF_TOPIC.to_string(), msg) {
                         debug!("Failed to publish a network royalties payment notification over gossipsub for record {pretty_key} and beneficiary {royalties_pk:?}: {err:?}");
                     }
                 }

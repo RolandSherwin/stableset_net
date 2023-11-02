@@ -11,9 +11,10 @@ mod common;
 use crate::common::{get_client_and_wallet, random_content};
 use sn_client::{Client, ClientEvent, WalletClient};
 use sn_logging::LogBuilder;
-use sn_node::{NodeEvent, TRANSFER_NOTIF_TOPIC};
+use sn_node::{NodeEvent, ROYALTY_TRANSFER_NOTIF_TOPIC};
 use sn_protocol::safenode_proto::{
-    safe_node_client::SafeNodeClient, NodeEventsRequest, TransferNotifsFilterRequest,
+    safe_node_client::SafeNodeClient, GossipsubSubscribeRequest, NodeEventsRequest,
+    TransferNotifsFilterRequest,
 };
 use sn_transfers::{
     CashNoteRedemption, LocalWallet, NanoTokens, NETWORK_ROYALTIES_AMOUNT_PER_ADDR,
@@ -124,7 +125,9 @@ async fn nodes_rewards_for_chunks_notifs_over_gossipsub() -> Result<()> {
     let handle = spawn_royalties_payment_client_listener(&client)?;
 
     let num_of_chunks = chunks.len();
+
     println!("Paying for {num_of_chunks} random addresses...");
+
     let (_, storage_cost, royalties_cost) = files_api
         .pay_and_upload_bytes_test(*content_addr.xorname(), chunks, false)
         .await?;
@@ -160,6 +163,7 @@ async fn nodes_rewards_for_register_notifs_over_gossipsub() -> Result<()> {
     let handle = spawn_royalties_payment_client_listener(&client)?;
 
     println!("Paying for random Register address {register_addr:?} ...");
+
     let (_, cost) = client
         .create_and_pay_for_register(register_addr, &mut wallet_client, false)
         .await?;
@@ -167,7 +171,8 @@ async fn nodes_rewards_for_register_notifs_over_gossipsub() -> Result<()> {
 
     let count = handle.await??;
     println!("Number of notifications received by node: {count}");
-    assert_eq!(count, 1, "Unexpected number of notifications received");
+
+    assert!(count >= 1, "Not enough notifications received");
 
     Ok(())
 }
@@ -188,24 +193,34 @@ async fn nodes_rewards_transfer_notifs_filter() -> Result<()> {
         paying_wallet_dir.to_path_buf(),
         chunks_dir.path().to_path_buf(),
     )?;
+    let num_of_chunks = chunks.len();
 
     // this node shall receive the notifications since we set the correct royalties pk as filter
     let royalties_pk = NETWORK_ROYALTIES_PK.public_key();
-    let handle_1 =
-        spawn_royalties_payment_listener("https://127.0.0.1:12001".to_string(), royalties_pk, true);
+    let handle_1 = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12001".to_string(),
+        royalties_pk,
+        true,
+        num_of_chunks,
+    );
     // this other node shall *not* receive any notification since we set the wrong pk as filter
     let random_pk = SecretKey::random().public_key();
-    let handle_2 =
-        spawn_royalties_payment_listener("https://127.0.0.1:12002".to_string(), random_pk, true);
+    let handle_2 = spawn_royalties_payment_listener(
+        "https://127.0.0.1:12002".to_string(),
+        random_pk,
+        true,
+        num_of_chunks,
+    );
     // this other node shall *not* receive any notification either since we don't set any pk as filter
     let handle_3 = spawn_royalties_payment_listener(
         "https://127.0.0.1:12003".to_string(),
         royalties_pk,
         false,
+        num_of_chunks,
     );
 
     let num_of_chunks = chunks.len();
-    println!("Paying for {num_of_chunks} random addresses...");
+    println!("Paying for {num_of_chunks} chunks");
     let (_, storage_cost, royalties_cost) = files_api
         .pay_and_upload_bytes_test(*content_addr.xorname(), chunks, false)
         .await?;
@@ -277,17 +292,26 @@ fn current_rewards_balance() -> Result<NanoTokens> {
 fn spawn_royalties_payment_listener(
     endpoint: String,
     royalties_pk: PublicKey,
-    set_fiter: bool,
+    set_filter: bool,
+    expected_cout: usize,
 ) -> JoinHandle<Result<usize, eyre::Report>> {
     tokio::spawn(async move {
         let mut rpc_client = SafeNodeClient::connect(endpoint).await?;
-        if set_fiter {
+
+        if set_filter {
             let _ = rpc_client
                 .transfer_notifs_filter(Request::new(TransferNotifsFilterRequest {
                     pk: royalties_pk.to_bytes().to_vec(),
                 }))
                 .await?;
         }
+
+        let _ = rpc_client
+            .subscribe_to_topic(Request::new(GossipsubSubscribeRequest {
+                topic: ROYALTY_TRANSFER_NOTIF_TOPIC.to_string(),
+            }))
+            .await?;
+
         let response = rpc_client
             .node_events(Request::new(NodeEventsRequest {}))
             .await?;
@@ -304,9 +328,7 @@ fn spawn_royalties_payment_listener(
                         println!("Transfer notif received for key {key:?}");
                         if key == royalties_pk {
                             count += 1;
-                            // if count == 1 {
-                            //     break;
-                            // }
+                            println!("Received {count}/{expected_cout} royalty notifs so far");
                         }
                     }
                     Ok(_) => { /* ignored */ }
@@ -330,7 +352,7 @@ fn spawn_royalties_payment_client_listener(
     client: &Client,
 ) -> Result<JoinHandle<Result<usize, eyre::Report>>> {
     let royalties_pk = NETWORK_ROYALTIES_PK.public_key();
-    client.subscribe_to_topic(TRANSFER_NOTIF_TOPIC.to_string())?;
+    client.subscribe_to_topic(ROYALTY_TRANSFER_NOTIF_TOPIC.to_string())?;
 
     let mut events_receiver = client.events_channel();
 

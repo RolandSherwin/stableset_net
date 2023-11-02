@@ -25,7 +25,7 @@ use url::Url;
 pub(crate) const BATCH_SIZE: usize = 20;
 
 const DEFAULT_RECEIVE_ONLINE_WALLET_DIR: &str = "receive_online";
-const TRANSFER_NOTIF_TOPIC: &str = "TRANSFER_NOTIFICATION";
+const ROYALTY_TRANSFER_NOTIF_TOPIC: &str = "ROYALTY_TRANSFER_NOTIFICATION";
 
 // Please do not remove the blank lines in these doc comments.
 // They are used for inserting line breaks when the help menu is rendered in the UI.
@@ -366,7 +366,7 @@ async fn listen_notifs_and_deposit(root_dir: &Path, client: &Client, sk: String)
     let main_pk = wallet.address();
     let pk = main_pk.public_key();
 
-    client.subscribe_to_topic(TRANSFER_NOTIF_TOPIC.to_string())?;
+    client.subscribe_to_topic(ROYALTY_TRANSFER_NOTIF_TOPIC.to_string())?;
     let mut events_receiver = client.events_channel();
 
     println!("Current balance in local wallet: {}", wallet.balance());
