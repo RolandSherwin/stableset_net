@@ -119,9 +119,11 @@ impl RunningNode {
     }
 
     /// Subscribe to given gossipsub topic
-    pub fn subscribe_to_topic(&self, topic_id: String) -> Result<()> {
+    pub fn subscribe_to_topic(&self, topic_id: String, is_listener: bool) -> Result<()> {
         self.network.subscribe_to_topic(topic_id)?;
-        self.network.start_listen_gossip()?;
+        if is_listener {
+            self.network.start_listen_gossip()?;
+        }
         Ok(())
     }
 

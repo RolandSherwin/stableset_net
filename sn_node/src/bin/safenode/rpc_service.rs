@@ -194,7 +194,7 @@ impl SafeNode for SafeNodeRpcService {
 
         let topic = &request.get_ref().topic;
 
-        match self.running_node.subscribe_to_topic(topic.clone()) {
+        match self.running_node.subscribe_to_topic(topic.clone(), true) {
             Ok(()) => Ok(Response::new(GossipsubSubscribeResponse {})),
             Err(err) => Err(Status::new(
                 Code::Internal,

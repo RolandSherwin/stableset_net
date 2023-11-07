@@ -15,7 +15,10 @@ use bytes::Bytes;
 use libp2p::{autonat::NatStatus, identity::Keypair, Multiaddr};
 #[cfg(feature = "open-metrics")]
 use prometheus_client::registry::Registry;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{
+    rngs::{OsRng, StdRng},
+    Rng, SeedableRng,
+};
 use sn_networking::{
     MsgResponder, Network, NetworkBuilder, NetworkEvent, SwarmDriver, CLOSE_GROUP_SIZE,
 };
@@ -43,6 +46,9 @@ use tokio::{
 /// The notification msg is expected to contain the serialised public key, followed by the
 /// serialised transfer info encrypted against the referenced public key.
 pub const ROYALTY_TRANSFER_NOTIF_TOPIC: &str = "ROYALTY_TRANSFER_NOTIFICATION";
+
+/// Defines the percentage (1/50) of node to act as royalty_transfer_notify forwarder.
+const FORWARDER_CHOOSING_FACTOR: usize = 50;
 
 /// Interval to trigger replication on a random close_group peer
 const PERIODIC_REPLICATION_INTERVAL: Duration = Duration::from_secs(30);
@@ -141,6 +147,18 @@ impl NodeBuilder {
 
         // Run the node
         node.run(swarm_driver, network_event_receiver);
+
+        // Having a portion of nodes (1/50) subscribe to the ROYALTY_TRANSFER_NOTIF_TOPIC
+        // Such nodes become `forwarder` to ensure the actual beneficary won't miss.
+        let index: usize = OsRng.gen_range(0..FORWARDER_CHOOSING_FACTOR);
+        if index == FORWARDER_CHOOSING_FACTOR / 2 {
+            trace!("Picked as a forwarding node to subscribe to the {ROYALTY_TRANSFER_NOTIF_TOPIC} topic");
+            // Forwarder only needs to forward topic msgs on libp2p level,
+            // i.e. no need to handle topic msgs, hence not a `listener`.
+            running_node
+                .subscribe_to_topic(ROYALTY_TRANSFER_NOTIF_TOPIC.to_string(), false)
+                .map(|()| info!("Node has been subscribed to gossipsub topic '{ROYALTY_TRANSFER_NOTIF_TOPIC}' to receive network royalties payments notifications."))?;
+        }
 
         Ok(running_node)
     }
