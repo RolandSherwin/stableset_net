@@ -26,6 +26,7 @@ use sn_transfers::{LocalWallet, MainPubkey, MainSecretKey};
 use std::{fs, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 use tokio_stream::StreamExt;
 use tonic::Request;
+use tracing::trace;
 use tracing_core::Level;
 
 #[derive(Parser, Debug)]
@@ -278,6 +279,10 @@ pub async fn transfers_events(
                     "New transfer notification received for {key:?}, containing {} CashNoteRedemption/s.",
                     cashnote_redemptions.len()
                 );
+                trace!(
+                    "New transfer notification received for {key:?}, containing {} CashNoteRedemption/s.",
+                    cashnote_redemptions.len()
+                );
 
                 match client
                     .verify_cash_notes_redemptions(main_pk, &cashnote_redemptions)
@@ -307,6 +312,11 @@ pub async fn transfers_events(
                 cn.unique_pubkey(),
                 cn.value()?
             );
+            trace!(
+                "CashNote received with {:?}, value: {}",
+                cn.unique_pubkey(),
+                cn.value()?
+            );
 
             if let Some(ref path) = log_cash_notes {
                 // create cash_notes dir
@@ -317,12 +327,17 @@ pub async fn transfers_events(
 
                 let cash_note_file_path = path.join(unique_pubkey_file_name);
                 println!("Writing cash note to: {}", cash_note_file_path.display());
+                trace!("Writing cash note to: {}", cash_note_file_path.display());
 
                 let hex = cn.to_hex()?;
                 fs::write(cash_note_file_path, &hex)?;
             }
         }
         println!(
+            "New balance after depositing received CashNote/s: {}",
+            wallet.balance()
+        );
+        trace!(
             "New balance after depositing received CashNote/s: {}",
             wallet.balance()
         );
