@@ -262,12 +262,16 @@ impl Files {
                         .get_local_payment_and_upload_chunk(chunk, false, false)
                         .await?;
 
-                    Ok::<_, Error>(())
+                    Ok::<(), Error>(())
                 }
             })
             .collect();
 
-        let _ = futures::future::join_all(uploads).await;
+        for upload in futures::future::join_all(uploads).await {
+            if let Err(err) = upload {
+                error!("Failed to get local payment and upload chunk with err {err:?}");
+            }
+        }
 
         let net_addr = NetworkAddress::ChunkAddress(ChunkAddress::new(file_addr));
 
