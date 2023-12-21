@@ -40,7 +40,9 @@ pub struct FilesApi {
     wallet_dir: PathBuf,
 }
 
-type ChunkFileResult = Result<(XorName, u64, Vec<(XorName, PathBuf)>)>;
+/// Result of the resulting data address, the DataMap Chunk, filesize and the paths of the chunks to be stored.
+/// If the DataMapChunk exists and is not stored on the network, then it will not be accessible at this address.
+type ChunkFileResult = Result<(XorName, Option<Chunk>, u64, Vec<(XorName, PathBuf)>)>;
 
 impl FilesApi {
     /// Create file apis instance.
@@ -127,28 +129,34 @@ impl FilesApi {
         Ok(bytes)
     }
 
-    /// Tries to chunk the file, returning `(head_address, file_size, chunk_names)`
+    /// Tries to chunk the file, returning `(head_address, data_map_chunk, file_size, chunk_names)`
     /// and writes encrypted chunks to disk.
     pub fn chunk_file(file_path: &Path, chunk_dir: &Path) -> ChunkFileResult {
         let mut file = File::open(file_path)?;
         let metadata = file.metadata()?;
         let file_size = metadata.len();
 
-        let (head_address, chunks_paths) = if file_size < MIN_ENCRYPTABLE_BYTES as u64 {
-            let mut bytes = Vec::new();
-            let _ = file.read_to_end(&mut bytes)?;
-            let chunk = package_small(SmallFile::new(bytes.into())?)?;
+        let (head_address, data_map_chunk, chunks_paths) =
+            if file_size < MIN_ENCRYPTABLE_BYTES as u64 {
+                let mut bytes = Vec::new();
+                let _ = file.read_to_end(&mut bytes)?;
+                let chunk = package_small(SmallFile::new(bytes.into())?)?;
 
-            // Write the result to disk
-            let small_chunk_file_path = chunk_dir.join(hex::encode(*chunk.name()));
-            let mut output_file = File::create(small_chunk_file_path.clone())?;
-            output_file.write_all(&chunk.value)?;
+                // Write the result to disk
+                let small_chunk_file_path = chunk_dir.join(hex::encode(*chunk.name()));
+                let mut output_file = File::create(small_chunk_file_path.clone())?;
+                output_file.write_all(&chunk.value)?;
 
-            (*chunk.name(), vec![(*chunk.name(), small_chunk_file_path)])
-        } else {
-            encrypt_large(file_path, chunk_dir)?
-        };
-        Ok((head_address, file_size, chunks_paths))
+                (
+                    *chunk.name(),
+                    None,
+                    vec![(*chunk.name(), small_chunk_file_path)],
+                )
+            } else {
+                let (data_map_chunk, chunks) = encrypt_large(file_path, chunk_dir)?;
+                (*data_map_chunk.name(), Some(data_map_chunk), chunks)
+            };
+        Ok((head_address, data_map_chunk, file_size, chunks_paths))
     }
 
     /// Directly writes Chunks to the network in the
@@ -215,11 +223,18 @@ impl FilesApi {
         let chunk_path = temp_dir.path().join("chunk_path");
         create_dir_all(chunk_path.clone())?;
 
-        let (head_address, _file_size, chunks_paths) = Self::chunk_file(&file_path, &chunk_path)?;
+        let (head_address, data_map_chunk, _file_size, chunks_paths) =
+            Self::chunk_file(&file_path, &chunk_path)?;
 
         for (_chunk_name, chunk_path) in chunks_paths {
             let chunk = Chunk::new(Bytes::from(fs::read(chunk_path)?));
             self.get_local_payment_and_upload_chunk(chunk, verify, false)
+                .await?;
+        }
+
+        // Finally upload the data map chunk itself
+        if let Some(data_map) = data_map_chunk {
+            self.get_local_payment_and_upload_chunk(data_map, verify, false)
                 .await?;
         }
 
@@ -397,12 +412,11 @@ impl FilesApi {
 }
 
 /// Encrypts a [`LargeFile`] and returns the resulting address and all chunk names.
-/// Correspondent encrypted chunks are writen in the specified output folder.
+/// Correspondent encrypted chunks are written in the specified output folder.
 /// Does not store anything to the network.
-fn encrypt_large(
-    file_path: &Path,
-    output_dir: &Path,
-) -> Result<(XorName, Vec<(XorName, PathBuf)>)> {
+///
+/// Returns data map as a chunk, and the resulting chunks
+fn encrypt_large(file_path: &Path, output_dir: &Path) -> Result<(Chunk, Vec<(XorName, PathBuf)>)> {
     Ok(crate::chunks::encrypt_large(file_path, output_dir)?)
 }
 

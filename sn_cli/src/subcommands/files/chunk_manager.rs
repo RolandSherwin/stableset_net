@@ -10,6 +10,7 @@ use crate::subcommands::files::get_progress_bar;
 use color_eyre::{eyre::bail, Result};
 use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use sn_client::FilesApi;
+use sn_protocol::storage::Chunk;
 use std::{
     collections::{BTreeMap, BTreeSet},
     ffi::OsString,
@@ -23,6 +24,7 @@ use xor_name::XorName;
 
 const CHUNK_ARTIFACTS_DIR: &str = "chunk_artifacts";
 const METADATA_FILE: &str = "metadata";
+const DATA_MAP_FILE: &str = "data_map";
 
 // The unique hex encoded hash(path)
 // This allows us to uniquely identify if a file has been chunked or not.
@@ -45,6 +47,7 @@ impl PathXorName {
 pub(crate) struct ChunkedFile {
     pub file_name: OsString,
     pub file_xor_addr: XorName,
+    pub data_map: Option<Chunk>,
     pub chunks: BTreeSet<(XorName, PathBuf)>,
 }
 
@@ -174,13 +177,14 @@ impl ChunkManager {
                 };
 
                 match FilesApi::chunk_file(path, &file_chunks_dir) {
-                    Ok((file_xor_addr, size, chunks)) => {
+                    Ok((file_xor_addr, data_map, size, chunks)) => {
                         progress_bar.clone().inc(1);
                         debug!("Chunked {original_file_name:?} with {path_xor:?} into file's XorName: {file_xor_addr:?} of size {size}, and chunks len: {}", chunks.len());
 
                         let chunked_file = ChunkedFile {
                             file_xor_addr,
                             file_name: original_file_name.clone(),
+                            data_map,
                             chunks: chunks.into_iter().collect()
                         };
                         Some((path_xor.clone(), chunked_file))
@@ -208,26 +212,51 @@ impl ChunkManager {
             );
         }
 
-        // write metadata
+        // write metadata and data_map
         let _ = chunked_files
             .par_iter()
             .filter_map(|(path_xor, chunked_file)| {
                 let metadata_path = artifacts_dir.join(&path_xor.0).join(METADATA_FILE);
+
                 let metadata = rmp_serde::to_vec(&chunked_file.file_xor_addr)
                     .map_err(|_| error!("Failed to serialize file_xor_addr for writing metadata"))
                     .ok()?;
+
                 let mut metadata_file = File::create(&metadata_path)
                     .map_err(|_| {
                         error!("Failed to create metadata_path {metadata_path:?} for {path_xor:?}")
                     })
                     .ok()?;
+
                 metadata_file
                     .write_all(&metadata)
                     .map_err(|_| {
                         error!("Failed to write metadata to {metadata_path:?} for {path_xor:?}")
                     })
                     .ok()?;
-                debug!("Wrote metadata for {path_xor:?}");
+
+                // only write out the data_map if one exists for this file
+                if let Some(data_map_chunk) = &chunked_file.data_map {
+                    let data_map_path = artifacts_dir.join(&path_xor.0).join(DATA_MAP_FILE);
+                    let data_map = rmp_serde::to_vec(&data_map_chunk)
+                        .map_err(|_| error!("Failed to serialize data_map for writing data_map"))
+                        .ok()?;
+                    let mut data_map_file = File::create(&data_map_path)
+                        .map_err(|_| {
+                            error!(
+                                "Failed to create data_map_path {data_map_path:?} for {path_xor:?}"
+                            )
+                        })
+                        .ok()?;
+                    data_map_file
+                        .write_all(&data_map)
+                        .map_err(|_| {
+                            error!("Failed to write data_map to {data_map_path:?} for {path_xor:?}")
+                        })
+                        .ok()?;
+                }
+
+                debug!("Wrote metadata and data_map for {path_xor:?}");
                 Some(())
             })
             .count();
@@ -263,12 +292,36 @@ impl ChunkManager {
     }
 
     /// Get all the chunk name and their path.
-    pub(crate) fn get_chunks(&self) -> Vec<(XorName, PathBuf)> {
-        self.chunks
+    /// If publish_data_maps is true, append all the ChunkedFile.data_map chunks to the vec
+    pub(crate) fn get_chunks(&self, publish_data_maps: bool) -> Vec<(XorName, PathBuf)> {
+        let mut chunks = self
+            .chunks
             .values()
             .flat_map(|chunked_file| &chunked_file.chunks)
             .cloned()
-            .collect()
+            .collect::<Vec<(XorName, PathBuf)>>();
+
+        if publish_data_maps {
+            let data_map_chunks: Vec<_> = self
+                .files_to_chunk
+                .iter()
+                .flat_map(|(_original_file_name, path_xor, path)| {
+                    let data_map_path = self.artifacts_dir.join(&path).join(DATA_MAP_FILE);
+                    let chunk_file = self.chunks.get(path_xor);
+
+                    chunk_file.and_then(|chunk_file| {
+                        chunk_file
+                            .data_map
+                            .as_ref()
+                            .map(|data_map_chunk| (*data_map_chunk.name(), data_map_path))
+                    })
+                })
+                .collect();
+
+            chunks.extend(data_map_chunks);
+        }
+
+        chunks
     }
 
     pub(crate) fn is_chunks_empty(&self) -> bool {
@@ -349,9 +402,10 @@ impl ChunkManager {
     pub(crate) fn already_put_chunks(
         &mut self,
         files_path: &Path,
+        make_files_public: bool,
     ) -> Result<Vec<(XorName, PathBuf)>> {
         self.chunk_path(files_path, false)?;
-        Ok(self.get_chunks())
+        Ok(self.get_chunks(make_files_public))
     }
 
     // Try to read the chunks from `file_chunks_dir`
@@ -367,6 +421,7 @@ impl ChunkManager {
         let mut file_xor_addr: Option<XorName> = None;
         debug!("Trying to resume {path_xor:?} as the file_chunks_dir exists");
 
+        let mut data_map: Option<Chunk> = None;
         let chunks = WalkDir::new(file_chunks_dir)
             .into_iter()
             .flatten()
@@ -384,6 +439,12 @@ impl ChunkManager {
                     // not a chunk, so don't return
                     return None;
                 }
+                if entry.file_name() == DATA_MAP_FILE {
+                    data_map = Self::try_read_datamap(entry.path());
+
+                    return None;
+                }
+
                 // try to get the chunk's xorname from its filename
                 if let Some(file_name) = entry.file_name().to_str() {
                     Self::hex_decode_xorname(file_name)
@@ -398,8 +459,8 @@ impl ChunkManager {
             })
             .collect::<BTreeSet<_>>();
 
-        match file_xor_addr {
-            Some(file_xor_addr) => {
+        match (file_xor_addr, data_map) {
+            (Some(file_xor_addr), Some(data_map)) => {
                 debug!("Resuming {} chunks for file {original_file_name:?} and with file_xor_addr {file_xor_addr:?}/{path_xor:?}", chunks.len());
 
                 Some((
@@ -407,13 +468,14 @@ impl ChunkManager {
                     ChunkedFile {
                         file_name: original_file_name,
                         file_xor_addr,
+                        data_map: Some(data_map),
                         chunks,
                     },
                 ))
             }
-            None => {
-                error!("Metadata file was not present for {path_xor:?}");
-                // metadata file was not present/was not read
+            _ => {
+                error!("Metadata file or data map was not present for {path_xor:?}");
+                // metadata file or data map was not present/was not read
                 None
             }
         }
@@ -428,6 +490,16 @@ impl ChunkManager {
             .map_err(|err| error!("Failed to deserialize metadata with err {err:?}"))
             .ok()?;
         Some(metadata)
+    }
+
+    // Try to read the datamap file
+    fn try_read_datamap(path: &Path) -> Option<Chunk> {
+        let data_map = fs::read(path)
+            .map_err(|err| error!("Failed to read data_map with err {err:?}"))
+            .ok()?;
+        rmp_serde::from_slice(&data_map)
+            .map_err(|err| error!("Failed to deserialize data_map with err {err:?}"))
+            .ok()?
     }
 
     // Decode the hex encoded xorname

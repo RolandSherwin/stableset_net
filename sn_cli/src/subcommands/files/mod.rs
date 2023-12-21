@@ -52,6 +52,9 @@ pub enum FilesCmds {
         /// Default to be not showing.
         #[clap(long, name = "show_holders", default_value = "false")]
         show_holders: bool,
+        /// Should the file be made accessible to all. (This is irreversible)
+        #[clap(long, name = "make_public", default_value = "false", short = 'p')]
+        make_public: bool,
         /// The retry_count for retrying failed chunks
         /// during payment and upload processing.
         #[clap(long, default_value_t = MAX_UPLOAD_RETRIES, short = 'r')]
@@ -94,9 +97,11 @@ pub(crate) async fn files_cmds(
             batch_size,
             show_holders,
             max_retries,
+            make_public,
         } => {
             upload_files(
                 path,
+                make_public,
                 client,
                 root_dir.to_path_buf(),
                 verify_store,
@@ -158,6 +163,7 @@ pub(crate) async fn files_cmds(
 /// verify if the data was stored successfully.
 async fn upload_files(
     files_path: PathBuf,
+    make_data_public: bool,
     client: &Client,
     root_dir: PathBuf,
     verify_store: bool,
@@ -166,6 +172,9 @@ async fn upload_files(
     max_retries: usize,
 ) -> Result<()> {
     debug!("Uploading file(s) from {files_path:?}, batch size {batch_size:?} will verify?: {verify_store}");
+    if make_data_public {
+        info!("{files_path:?} will be made public and linkable");
+    }
 
     let files_api: FilesApi = FilesApi::new(client.clone(), root_dir.to_path_buf());
     if files_api.wallet()?.balance().is_zero() {
@@ -177,7 +186,7 @@ async fn upload_files(
     // Return early if we already uploaded them
     let mut chunks_to_upload = if chunk_manager.is_chunks_empty() {
         // make sure we don't have any failed chunks in those
-        let chunks = chunk_manager.already_put_chunks(&files_path)?;
+        let chunks = chunk_manager.already_put_chunks(&files_path, make_data_public)?;
         println!(
             "Files upload attempted previously, verifying {} chunks",
             chunks.len()
@@ -212,7 +221,7 @@ async fn upload_files(
         println!("{:?} chunks were uploaded in the past but failed to verify. Will attempt to upload them again...", failed_chunks.len());
         failed_chunks
     } else {
-        chunk_manager.get_chunks()
+        chunk_manager.get_chunks(make_data_public)
     };
 
     // Random shuffle the chunks_to_upload, so that uploading of a large file can be speed up by
