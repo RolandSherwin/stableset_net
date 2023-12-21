@@ -58,7 +58,9 @@ pub(crate) struct ChunkManager {
     publish_data_maps: bool,
     files_to_chunk: Vec<(OsString, PathXorName, PathBuf)>,
     chunks: BTreeMap<PathXorName, ChunkedFile>,
-    verified_files: Vec<(OsString, XorName)>,
+    // The (original_file_name, file_xor_addr, path_xor_name to get the DATA_MAP_FILE). The file_xor_addr and
+    // path_xor_name perform the same thing. Caching the file_xor_addr to avoid reads if publish_data_map is true.
+    verified_files: Vec<(OsString, XorName, PathXorName)>,
     resumed_chunk_count: usize,
     resumed_files_count: usize,
 }
@@ -139,9 +141,9 @@ impl ChunkManager {
 
         // Get the list of verified files
         {
-            let verified_files = self.chunks.iter().filter_map(|(_, chunked_file)| {
+            let verified_files = self.chunks.iter().filter_map(|(path_xor, chunked_file)| {
                 if chunked_file.chunks.is_empty() {
-                    Some((chunked_file.file_name.clone(), chunked_file.file_xor_addr))
+                    Some((chunked_file.file_name.clone(), chunked_file.file_xor_addr, path_xor.clone()))
                 } else {
                     None
                 }
@@ -389,20 +391,29 @@ impl ChunkManager {
             }
         });
 
-        for path_xor in &entire_file_is_done {
+        for path_xor in entire_file_is_done {
             // todo: should we remove the entry? ig so
-            if let Some(chunked_file) = self.chunks.remove(path_xor) {
+            if let Some(chunked_file) = self.chunks.remove(&path_xor) {
                 trace!("removed {path_xor:?} from chunks list");
                 self.verified_files
-                    .push((chunked_file.file_name, chunked_file.file_xor_addr));
+                    .push((chunked_file.file_name, chunked_file.file_xor_addr, path_xor));
             }
         }
     }
 
-    /// Return the filename and the file's Xor address if all their chunks has been marked as
-    /// verified
-    pub(crate) fn verified_files(&self) -> &Vec<(OsString, XorName)> {
-        &self.verified_files
+    /// Return the filename and the file's Xor address if all their chunks have been marked as completed
+    pub(crate) fn completed_files_addr(&self) -> impl Iterator<Item = (&OsString, &XorName)> {
+        self.verified_files.iter().map(|(file_name, file_xor_addr, _)| (file_name, file_xor_addr))
+    }
+
+    //  Return the filename and the file's DataMap chunk if all their chunks have been marked as completed
+    pub(crate) fn completed_files_datamaps(&self) -> Vec<(OsString, Chunk)> {
+        self.verified_files.par_iter().filter_map(|(file_name,_, path_xor)| {
+            // read the DATA_MAP_FILE
+            let data_map = Self::try_read_datamap(&self.artifacts_dir.join(&path_xor.0).join(DATA_MAP_FILE))?;
+            Some((file_name.clone(), data_map))
+        }).collect()
+
     }
 
     /// Return the filename and the file's Xor address if all their chunks has been marked as

@@ -207,7 +207,7 @@ async fn upload_files(
             println!("**************************************");
             println!("*          Uploaded Files            *");
             println!("**************************************");
-            for (file_name, addr) in chunk_manager.verified_files() {
+            for (file_name, addr) in chunk_manager.completed_files_addr() {
                 if let Some(file_name) = file_name.to_str() {
                     println!("\"{file_name}\" {addr:x}");
                     info!("Uploaded {file_name} to {addr:x}");
@@ -282,7 +282,7 @@ async fn upload_files(
                 .write(true)
                 .append(true)
                 .open(file_names_path)?;
-            for (file_name, addr) in chunk_manager.verified_files() {
+            for (file_name, addr) in chunk_manager.completed_files_addr() {
                 if let Some(file_name) = file_name.to_str() {
                     println!("\"{file_name}\" {addr:x}");
                     info!("Uploaded {file_name} to {addr:x}");
