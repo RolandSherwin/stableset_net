@@ -180,13 +180,13 @@ async fn upload_files(
     if files_api.wallet()?.balance().is_zero() {
         bail!("The wallet is empty. Cannot upload any files! Please transfer some funds into the wallet");
     }
-    let mut chunk_manager = ChunkManager::new(&root_dir);
+    let mut chunk_manager = ChunkManager::new(&root_dir).set_publish_data_maps(make_data_public);
     chunk_manager.chunk_path(&files_path, true)?;
 
     // Return early if we already uploaded them
     let mut chunks_to_upload = if chunk_manager.is_chunks_empty() {
         // make sure we don't have any failed chunks in those
-        let chunks = chunk_manager.already_put_chunks(&files_path, make_data_public)?;
+        let chunks = chunk_manager.already_put_chunks(&files_path)?;
         println!(
             "Files upload attempted previously, verifying {} chunks",
             chunks.len()
@@ -221,7 +221,7 @@ async fn upload_files(
         println!("{:?} chunks were uploaded in the past but failed to verify. Will attempt to upload them again...", failed_chunks.len());
         failed_chunks
     } else {
-        chunk_manager.get_chunks(make_data_public)
+        chunk_manager.get_chunks()
     };
 
     // Random shuffle the chunks_to_upload, so that uploading of a large file can be speed up by

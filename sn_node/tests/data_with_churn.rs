@@ -397,7 +397,7 @@ fn store_chunks_task(
                 .write_all(&random_bytes)
                 .expect("failed to write to temp chunk file");
 
-            let (addr, _file_size, chunks) =
+            let (addr, _data_map, _file_size, chunks) =
                 FilesApi::chunk_file(&file_path, &output_dir).expect("Failed to chunk bytes");
 
             println!(
