@@ -866,7 +866,7 @@ mod tests {
         let root_dir = tmp_dir.path().join("root_dir");
         fs::create_dir_all(&random_files_dir)?;
         fs::create_dir_all(&root_dir)?;
-        let manager = ChunkManager::new(&root_dir).set_publish_data_maps(true);
+        let manager = ChunkManager::new(&root_dir).set_publish_data_maps(false);
 
         Ok((tmp_dir, manager, root_dir, random_files_dir))
     }
