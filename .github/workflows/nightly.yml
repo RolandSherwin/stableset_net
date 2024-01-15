@@ -61,7 +61,7 @@ jobs:
           # custom-node-bin-branch-name: ${{ github.event.pull_request.head.ref }}
           # Prevent deployer from fetching the latest release. It contains the `network-contacts` feature turned on.
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -120,7 +120,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyE2E
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -151,7 +151,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyE2E
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -257,7 +257,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -288,7 +288,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -319,7 +319,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly    
 
@@ -362,7 +362,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -424,7 +424,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -455,7 +455,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -513,7 +513,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -603,7 +603,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -634,7 +634,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
       
@@ -710,7 +710,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -786,7 +786,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
@@ -817,7 +817,7 @@ jobs:
           provider: digital-ocean
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
-          custom-node-bin-branch-name: main
+          custom-node-bin-branch-name: wan_nightly
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
       
