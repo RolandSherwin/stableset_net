@@ -124,6 +124,15 @@ jobs:
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
+      - name: Upload local logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local_logs_NightlyE2E
+          path: |
+            ~/.local/share/safe/node/*/logs/*.log*
+            ~/.local/share/safe/*/*/*.log*
+            ~/.local/share/safe/client/logs/*/*.log*
 
       - name: Stop the WAN network
         if: always()
@@ -283,6 +292,16 @@ jobs:
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
 
+      - name: Upload local logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local_logs_NightlyGossipSubE2E
+          path: |
+            ~/.local/share/safe/node/*/logs/*.log*
+            ~/.local/share/safe/*/*/*.log*
+            ~/.local/share/safe/client/logs/*/*.log*
+
       - name: Stop the WAN network
         if: always()
         uses: RolandSherwin/sn-testnet-action@wan_nightly
@@ -302,7 +321,7 @@ jobs:
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
           testnet-tool-repo-user: RolandSherwin
-          testnet-tool-repo-branch: wan_nightly
+          testnet-tool-repo-branch: wan_nightly    
 
   spend_test:
     name: Spend tests against network
@@ -408,6 +427,16 @@ jobs:
           custom-node-bin-branch-name: main
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
+
+      - name: Upload local logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local_logs_NightlySpendTest
+          path: |
+            ~/.local/share/safe/node/*/logs/*.log*
+            ~/.local/share/safe/*/*/*.log*
+            ~/.local/share/safe/client/logs/*/*.log*
 
       - name: Stop the WAN network
         if: always()
@@ -577,6 +606,16 @@ jobs:
           custom-node-bin-branch-name: main
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
+
+      - name: Upload local logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local_logs_NightlyChurnTest
+          path: |
+            ~/.local/share/safe/node/*/logs/*.log*
+            ~/.local/share/safe/*/*/*.log*
+            ~/.local/share/safe/client/logs/*/*.log*
 
       - name: Stop the WAN network
         if: always()
@@ -750,6 +789,16 @@ jobs:
           custom-node-bin-branch-name: main
           testnet-tool-repo-user: RolandSherwin
           testnet-tool-repo-branch: wan_nightly
+
+      - name: Upload local logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local_logs_NightlyDataLocationTest
+          path: |
+            ~/.local/share/safe/node/*/logs/*.log*
+            ~/.local/share/safe/*/*/*.log*
+            ~/.local/share/safe/client/logs/*/*.log*
 
       - name: Stop the WAN network
         if: always()
