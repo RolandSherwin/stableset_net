@@ -380,7 +380,7 @@ async fn spawn_royalties_payment_client_listener(
 
         // if expected royalties is 0 or 1 we'll wait for 20s as a minimum,
         // otherwise we'll wait for 10s per expected royalty
-        let secs = std::cmp::max(40, expected_royalties as u64 * 15);
+        let secs = std::cmp::max(80, expected_royalties as u64 * 15);
         let duration = Duration::from_secs(secs);
         tracing::info!("Awaiting transfers notifs for {duration:?}...");
         println!("Awaiting transfers notifs for {duration:?}...");
