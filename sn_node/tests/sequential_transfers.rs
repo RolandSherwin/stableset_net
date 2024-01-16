@@ -27,7 +27,6 @@ async fn cash_note_transfer_multiple_sequential_succeed() -> Result<()> {
         get_gossip_client_and_wallet(first_wallet_dir.path(), first_wallet_balance).await?;
 
     let second_wallet_balance = NanoTokens::from(first_wallet_balance / 2);
-    println!("Transferring from first wallet to second wallet: {second_wallet_balance}.");
     info!("Transferring from first wallet to second wallet: {second_wallet_balance}.");
     let second_wallet_dir = TempDir::new()?;
     let mut second_wallet = get_wallet(second_wallet_dir.path());
@@ -42,13 +41,11 @@ async fn cash_note_transfer_multiple_sequential_succeed() -> Result<()> {
         true,
     )
     .await?;
-    println!("Verifying the transfer from first wallet...");
     info!("Verifying the transfer from first wallet...");
 
     client.verify_cashnote(&tokens).await?;
     second_wallet.deposit_and_store_to_disk(&vec![tokens])?;
     assert_eq!(second_wallet.balance(), second_wallet_balance);
-    println!("CashNotes deposited to second wallet: {second_wallet_balance}.");
     info!("CashNotes deposited to second wallet: {second_wallet_balance}.");
 
     let first_wallet = get_wallet(&first_wallet_dir);
@@ -98,7 +95,6 @@ async fn cash_note_transfer_double_spend_fail() -> Result<()> {
 
     // send both transfers to the network
     // upload won't error out, only error out during verification.
-    println!("Sending both transfers to the network...");
     info!("Sending both transfers to the network...");
     let res = client
         .send_spends(transfer_to_2.all_spend_requests.iter(), false)
@@ -110,7 +106,6 @@ async fn cash_note_transfer_double_spend_fail() -> Result<()> {
     assert!(res.is_ok());
 
     // check the CashNotes, it should fail
-    println!("Verifying the transfers from first wallet...");
     info!("Verifying the transfers from first wallet...");
 
     let cash_notes_for_2: Vec<_> = transfer_to_2.created_cash_notes.clone();
@@ -118,7 +113,6 @@ async fn cash_note_transfer_double_spend_fail() -> Result<()> {
 
     let could_err1 = client.verify_cashnote(&cash_notes_for_2[0]).await;
     let could_err2 = client.verify_cashnote(&cash_notes_for_3[0]).await;
-    println!("Verifying at least one fails : {could_err1:?} {could_err2:?}");
     info!("Verifying at least one fails : {could_err1:?} {could_err2:?}");
     assert!(could_err1.is_err() || could_err2.is_err());
 
