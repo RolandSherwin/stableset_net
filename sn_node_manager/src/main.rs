@@ -305,6 +305,7 @@ async fn main() -> Result<()> {
             user,
             version,
         } => {
+            println!("GGG ROLAND");
             if !is_running_as_root() {
                 return Err(eyre!("The add command must run as the root user"));
             }
