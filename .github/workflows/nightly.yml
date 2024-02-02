@@ -835,6 +835,11 @@ jobs:
             echo "Sanity check pass for wan logs"
           fi
 
+            # Enable tmate debugging of manually-triggered workflows if the input option was provided
+    
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+
       # - name: post notification to slack on failure
       #   if: ${{ failure() }}
       #   uses: bryannice/gitactions-slack-notification@2.0.0
