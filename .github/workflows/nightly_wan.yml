@@ -1,6 +1,8 @@
 name: Nightly -- Full WAN Network Tests
 
 on:
+  pull_request:
+    branches: ["*"]
   schedule:
     - cron:  '0 0 * * *'
   workflow_dispatch:
@@ -53,6 +55,8 @@ jobs:
           # The latest release contains the `network-contacts` feature turned on.
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Check env variables
         shell: bash
@@ -113,6 +117,8 @@ jobs:
           testnet-name: NightlyE2E
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Upload local logs
         if: always()
@@ -142,6 +148,8 @@ jobs:
           testnet-name: NightlyE2E
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       # - name: post notification to slack on failure
       #   if: ${{ failure() }}
@@ -188,6 +196,8 @@ jobs:
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Check env variables
         shell: bash
@@ -217,6 +227,8 @@ jobs:
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Upload local logs
         if: always()
@@ -246,6 +258,8 @@ jobs:
           testnet-name: NightlyGossipSubE2E
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
   spend_test:
     name: Spend tests against network
@@ -285,6 +299,8 @@ jobs:
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Check env variables
         shell: bash
@@ -333,6 +349,8 @@ jobs:
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Upload local logs
         if: always()
@@ -362,6 +380,8 @@ jobs:
           testnet-name: NightlySpendTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       # - name: post notification to slack on failure
       #   if: ${{ failure() }}
@@ -421,6 +441,8 @@ jobs:
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Check env variables
         shell: bash
@@ -458,6 +480,8 @@ jobs:
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Upload local logs
         if: always()
@@ -487,6 +511,8 @@ jobs:
           testnet-name: NightlyChurnTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
       
       - name: Verify restart of nodes using rg
         shell: bash
@@ -620,6 +646,8 @@ jobs:
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Check env variables
         shell: bash
@@ -659,6 +687,8 @@ jobs:
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Upload local logs
         if: always()
@@ -688,6 +718,8 @@ jobs:
           testnet-name: NightlyDataLocationTest
           custom-node-bin-org-name: maidsafe
           custom-node-bin-branch-name: main
+          testnet-tool-repo-user: RolandSherwin
+          testnet-tool-repo-branch: wan_nightly
 
       - name: Verify restart of nodes using rg
         shell: bash
