@@ -53,8 +53,6 @@ pub async fn restart_safenode(
 ) -> Result<()> {
     node_control::stop(node, service_control).await?;
 
-    // Install the service again to make sure we re-use the same node port.
-    // Windows requires that the service be uninstalled first.
     service_control.uninstall(&node.service_name.clone())?;
     let install_ctx = node_control::InstallNodeServiceCtxBuilder {
         local: node.local,

@@ -9,7 +9,7 @@ use sn_protocol::safenode_proto::{
     GossipsubUnsubscribeRequest, NetworkInfoRequest, NodeInfoRequest, RecordAddressesRequest,
     RestartRequest, StopRequest, UpdateRequest,
 };
-use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr};
 use tokio::time::Duration;
 use tonic::Request;
 use tracing::error;
@@ -49,7 +49,7 @@ pub trait RpcActions: Sync {
 }
 
 pub struct RpcClient {
-    endpoint: Arc<String>,
+    endpoint: String,
 }
 
 impl RpcClient {
@@ -58,21 +58,20 @@ impl RpcClient {
 
     pub fn new(endpoint: &str) -> Self {
         Self {
-            endpoint: Arc::new(endpoint.to_string()),
+            endpoint: endpoint.to_string(),
         }
     }
 
     pub fn from_socket_addr(socket: SocketAddr) -> Self {
         let endpoint = format!("https://{socket}");
-        Self::new(&endpoint)
+        Self { endpoint }
     }
 
     // Connect to the RPC endpoint with retry
     async fn connect_with_retry(&self) -> Result<SafeNodeClient<tonic::transport::Channel>> {
         let mut attempts = 0;
-        let endpoint = self.endpoint.as_ref();
         loop {
-            match SafeNodeClient::connect(endpoint.clone()).await {
+            match SafeNodeClient::connect(self.endpoint.clone()).await {
                 Ok(rpc_client) => break Ok(rpc_client),
                 Err(err) => {
                     attempts += 1;
