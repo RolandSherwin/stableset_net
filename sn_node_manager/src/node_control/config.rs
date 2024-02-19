@@ -18,7 +18,7 @@ use std::{
 
 #[derive(Debug, PartialEq)]
 /// Intermediate struct to generate the proper `ServiceInstallCtx` that is used to install safenode services.
-pub(super) struct InstallNodeServiceCtxBuilder {
+pub struct InstallNodeServiceCtxBuilder {
     pub data_dir_path: PathBuf,
     pub genesis: bool,
     pub local: bool,
