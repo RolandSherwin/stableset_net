@@ -46,28 +46,28 @@ pub fn run(
 pub async fn restart_safenode(
     node: &mut Node,
     rpc_client: &dyn RpcActions,
-    bootstrap_peers: Vec<Multiaddr>,
-    env_variables: Option<Vec<(String, String)>>,
+    _bootstrap_peers: Vec<Multiaddr>,
+    _env_variables: Option<Vec<(String, String)>>,
     service_control: &dyn ServiceControl,
 ) -> Result<()> {
     node_control::stop(node, service_control).await?;
 
-    service_control.uninstall(&node.service_name.clone())?;
-    let install_ctx = node_control::InstallNodeServiceCtxBuilder {
-        local: node.local,
-        data_dir_path: node.data_dir_path.clone(),
-        genesis: node.genesis,
-        name: node.service_name.clone(),
-        node_port: node.get_safenode_port(),
-        bootstrap_peers,
-        rpc_socket_addr: node.rpc_socket_addr,
-        log_dir_path: node.log_dir_path.clone(),
-        safenode_path: node.safenode_path.clone(),
-        service_user: node.user.clone(),
-        env_variables,
-    }
-    .execute()?;
-    service_control.install(install_ctx)?;
+    // service_control.uninstall(&node.service_name.clone())?;
+    // let install_ctx = node_control::InstallNodeServiceCtxBuilder {
+    //     local: node.local,
+    //     data_dir_path: node.data_dir_path.clone(),
+    //     genesis: node.genesis,
+    //     name: node.service_name.clone(),
+    //     node_port: node.get_safenode_port(),
+    //     bootstrap_peers,
+    //     rpc_socket_addr: node.rpc_socket_addr,
+    //     log_dir_path: node.log_dir_path.clone(),
+    //     safenode_path: node.safenode_path.clone(),
+    //     service_user: node.user.clone(),
+    //     env_variables,
+    // }
+    // .execute()?;
+    // service_control.install(install_ctx)?;
 
     node_control::start(node, service_control, rpc_client, VerbosityLevel::Normal).await?;
     Ok(())
