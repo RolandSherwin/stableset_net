@@ -136,13 +136,6 @@ pub enum SubCmd {
         /// Specify a port for the daemon to listen for RPCs. It defaults to 12500 if not set.
         #[clap(long, default_value_t = 12500)]
         port: u16,
-        /// The user the service should run as.
-        ///
-        /// If the account does not exist, it will be created.
-        ///
-        /// On Windows this argument will have no effect.
-        #[clap(long)]
-        user: Option<String>,
         /// temp path
         #[clap(long)]
         path: PathBuf,
@@ -453,7 +446,6 @@ async fn main() -> Result<()> {
         SubCmd::Daemon {
             address,
             port,
-            user,
             path,
         } => {
             if !is_running_as_root() {
@@ -466,18 +458,8 @@ async fn main() -> Result<()> {
                 println!("=================================================");
             }
 
-            let service_user = user.unwrap_or("safe".to_string());
             let service_manager = NodeServiceManager {};
-            service_manager.create_service_user(&service_user)?;
-
-            daemon_control::run(
-                address,
-                port,
-                path,
-                service_user,
-                &service_manager,
-                verbosity,
-            )?;
+            daemon_control::run(address, port, path, &service_manager, verbosity)?;
 
             Ok(())
         }
