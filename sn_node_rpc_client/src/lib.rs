@@ -9,7 +9,7 @@ use sn_protocol::safenode_proto::{
     GossipsubUnsubscribeRequest, NetworkInfoRequest, NodeInfoRequest, RecordAddressesRequest,
     RestartRequest, StopRequest, UpdateRequest,
 };
-use std::{net::SocketAddr, path::PathBuf, str::FromStr};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, sync::Arc};
 use tokio::time::Duration;
 use tonic::Request;
 use tracing::error;
@@ -36,7 +36,7 @@ pub struct RecordAddress {
 }
 
 #[async_trait]
-pub trait RpcActions {
+pub trait RpcActions: Sync {
     async fn node_info(&self) -> Result<NodeInfo>;
     async fn network_info(&self) -> Result<NetworkInfo>;
     async fn record_addresses(&self) -> Result<Vec<RecordAddress>>;
@@ -49,7 +49,7 @@ pub trait RpcActions {
 }
 
 pub struct RpcClient {
-    endpoint: String,
+    endpoint: Arc<String>,
 }
 
 impl RpcClient {
@@ -58,20 +58,21 @@ impl RpcClient {
 
     pub fn new(endpoint: &str) -> Self {
         Self {
-            endpoint: endpoint.to_string(),
+            endpoint: Arc::new(endpoint.to_string()),
         }
     }
 
     pub fn from_socket_addr(socket: SocketAddr) -> Self {
         let endpoint = format!("https://{socket}");
-        Self { endpoint }
+        Self::new(&endpoint)
     }
 
     // Connect to the RPC endpoint with retry
     async fn connect_with_retry(&self) -> Result<SafeNodeClient<tonic::transport::Channel>> {
         let mut attempts = 0;
+        let endpoint = self.endpoint.as_ref();
         loop {
-            match SafeNodeClient::connect(self.endpoint.clone()).await {
+            match SafeNodeClient::connect(endpoint.clone()).await {
                 Ok(rpc_client) => break Ok(rpc_client),
                 Err(err) => {
                     attempts += 1;

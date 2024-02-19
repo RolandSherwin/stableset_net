@@ -11,12 +11,24 @@ extern crate tracing;
 
 use clap::Parser;
 use color_eyre::{self, eyre::Result};
-use sn_protocol::safenode_manager_proto::{
-    safe_node_manager_server::{SafeNodeManager, SafeNodeManagerServer},
-    RestartRequest, RestartResponse,
+use libp2p::Multiaddr;
+use sn_node_manager::{
+    config::get_node_registry_path, daemon_control, node_control, service::NodeServiceManager,
+};
+use sn_node_rpc_client::{RpcActions, RpcClient};
+use sn_protocol::{
+    node_registry::{Node, NodeRegistry, NodeStatus},
+    safenode_manager_proto::{
+        safe_node_manager_server::{SafeNodeManager, SafeNodeManagerServer},
+        RestartRequest, RestartResponse,
+    },
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use tonic::{transport::Server, Request, Response, Status};
+use tokio::sync::{
+    mpsc::{self, Sender},
+    oneshot,
+};
+use tonic::{transport::Server, Code, Request, Response, Status};
 
 const PORT: u16 = 12500;
 
@@ -33,7 +45,9 @@ struct Args {
     address: Ipv4Addr,
 }
 
-struct SafeNodeManagerDaemon {}
+struct SafeNodeManagerDaemon {
+    cmd_sender: Sender<Commands>,
+}
 
 // Implementing RPC interface for service defined in .proto
 #[tonic::async_trait]
@@ -43,24 +57,140 @@ impl SafeNodeManager for SafeNodeManagerDaemon {
         request: Request<RestartRequest>,
     ) -> Result<Response<RestartResponse>, Status> {
         println!("RPC request received {:?}", request.get_ref());
+        info!("RPC request received {:?}", request.get_ref());
 
-        // let delay = Duration::from_millis(request.get_ref().delay_millis);
-        // match self.ctrl_tx.send(NodeCtrl::Restart(delay)).await {
-        //     Ok(()) => Ok(Response::new(RestartResponse {})),
-        //     Err(err) => Err(Status::new(
-        //         Code::Internal,
-        //         format!("Failed to restart the node: {err}"),
-        //     )),
-        // }
+        Self::restart_handler().await.map_err(|err| {
+            Status::new(Code::Internal, format!("Failed to stop the node: {err}"))
+        })?;
+
+        // let (tx, rx) = oneshot::channel();
+        // self.cmd_sender
+        //     .send(Commands::Restart { response: tx })
+        //     .await
+        //     .map_err(|err| Status::new(Code::Internal, format!("Error inside the actor {err}")))?;
+        // rx.await
+        //     .map_err(|err| Status::new(Code::Internal, format!("Error inside the actor {err}")))?
+        //     .map_err(|err| {
+        //         Status::new(Code::Internal, format!("Failed to stop the node: {err}"))
+        //     })?;
+
         Ok(Response::new(RestartResponse {}))
     }
 }
 
-#[tokio::main]
+impl SafeNodeManagerDaemon {
+    async fn restart_handler() -> Result<()> {
+        let mut node_registry = NodeRegistry::load(&get_node_registry_path()?)?;
+
+        let mut node = &mut node_registry.nodes[0];
+        let rpc_client = RpcClient::from_socket_addr(node.rpc_socket_addr);
+
+        // Self::gg(
+        //     &mut node,
+        //     rpc_client,
+        //     node_registry.bootstrap_peers,
+        //     node_registry.environment_variables,
+        //     NodeServiceManager {},
+        // )
+        // .await;
+
+        daemon_control::restart_safenode(
+            &mut node,
+            &rpc_client,
+            node_registry.bootstrap_peers,
+            node_registry.environment_variables,
+            &NodeServiceManager {},
+        )
+        .await?;
+
+        Ok(())
+    }
+}
+
+// The SafeNodeManager trait returns `Status` as its error. So the actual logic is here and we can easily map the errors
+// into Status inside the trait fns.
+impl SafeNodeManagerDaemon {}
+
+enum Commands {
+    Restart {
+        response: oneshot::Sender<Result<()>>,
+    },
+}
+
+struct Actor {}
+
+impl Actor {
+    pub fn spawn_actor() -> Sender<Commands> {
+        let (tx, mut rx) = mpsc::channel(100);
+        tokio::spawn(async move {
+            while let Some(cmd) = rx.recv().await {
+                match cmd {
+                    Commands::Restart { response } => {
+                        if let Err(err) = response.send(Self::restart_handler().await) {
+                            println!("Error while sending response to caller: {err:?}");
+                            error!("Error while sending response to caller: {err:?}");
+                        }
+                    }
+                }
+            }
+        });
+        tx
+    }
+
+    async fn restart_handler() -> Result<()> {
+        let mut node_registry = NodeRegistry::load(&get_node_registry_path()?)?;
+
+        let mut node = &mut node_registry.nodes[0];
+        let rpc_client = RpcClient::from_socket_addr(node.rpc_socket_addr);
+
+        // Self::gg(
+        //     &mut node,
+        //     rpc_client,
+        //     node_registry.bootstrap_peers,
+        //     node_registry.environment_variables,
+        //     NodeServiceManager {},
+        // )
+        // .await;
+
+        daemon_control::restart_safenode(
+            node,
+            &rpc_client,
+            node_registry.bootstrap_peers,
+            node_registry.environment_variables,
+            &NodeServiceManager {},
+        )
+        .await?;
+
+        Ok(())
+    }
+
+    // async fn gg(
+    //     node: &mut Node,
+    //     rpc_client: RpcClient,
+    //     bootstrap_peers: Vec<Multiaddr>,
+    //     env_variables: Option<Vec<(String, String)>>,
+    //     service_control: NodeServiceManager,
+    // ) {
+    //     // node_control::stop(node, &service_control).await;
+    //     match node.status {
+    //         NodeStatus::Added => {
+    //             println!(
+    //                 "Service {} has not been started since it was installed",
+    //                 node.service_name
+    //             );
+    //             // Ok(())
+    //         }
+    //         _ => node.status = NodeStatus::Removed,
+    //     }
+    // }
+}
+
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     println!("Starting safenode-manager-daemon");
     let args = Args::parse();
-    let service = SafeNodeManagerDaemon {};
+    let cmd_sender = Actor::spawn_actor();
+    let service = SafeNodeManagerDaemon { cmd_sender };
 
     // adding our service to our server.
     if let Err(err) = Server::builder()
