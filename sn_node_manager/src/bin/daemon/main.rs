@@ -70,11 +70,12 @@ impl SafeNodeManagerDaemon {
         daemon_control::restart_safenode(
             &mut node,
             &rpc_client,
-            node_registry.bootstrap_peers,
-            node_registry.environment_variables,
+            node_registry.bootstrap_peers.clone(),
+            node_registry.environment_variables.clone(),
             &NodeServiceManager {},
         )
         .await?;
+        node_registry.save()?;
 
         Ok(())
     }
@@ -120,7 +121,7 @@ mod tests {
     #[tokio::test]
     async fn restart() -> Result<()> {
         let mut rpc_client = get_safenode_manager_rpc_client(SocketAddr::new(
-            std::net::IpAddr::V4(Ipv4Addr::new(178, 62, 82, 4)),
+            std::net::IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
             PORT,
         ))
         .await?;
