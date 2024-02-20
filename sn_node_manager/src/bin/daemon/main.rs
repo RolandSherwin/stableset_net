@@ -10,19 +10,27 @@
 extern crate tracing;
 
 use clap::Parser;
-use color_eyre::{self, eyre::Result};
+use color_eyre::{
+    self,
+    eyre::{bail, OptionExt, Result},
+};
+use libp2p_identity::PeerId;
 use sn_node_manager::{
     config::get_node_registry_path, daemon_control, service::NodeServiceManager,
 };
 use sn_node_rpc_client::RpcClient;
 use sn_protocol::{
-    node_registry::NodeRegistry,
+    node_registry::{get_local_node_registry_path, NodeRegistry},
     safenode_manager_proto::{
         safe_node_manager_server::{SafeNodeManager, SafeNodeManagerServer},
-        RestartRequest, RestartResponse,
+        NodeProcessRestartRequest, NodeProcessRestartResponse, NodeServiceRestartRequest,
+        NodeServiceRestartResponse,
     },
 };
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 use tonic::{transport::Server, Code, Request, Response, Status};
 
 const PORT: u16 = 12500;
@@ -45,36 +53,91 @@ struct SafeNodeManagerDaemon {}
 // Implementing RPC interface for service defined in .proto
 #[tonic::async_trait]
 impl SafeNodeManager for SafeNodeManagerDaemon {
-    async fn restart(
+    async fn restart_node_process(
         &self,
-        request: Request<RestartRequest>,
-    ) -> Result<Response<RestartResponse>, Status> {
+        request: Request<NodeProcessRestartRequest>,
+    ) -> Result<Response<NodeProcessRestartResponse>, Status> {
         println!("RPC request received {:?}", request.get_ref());
         info!("RPC request received {:?}", request.get_ref());
 
-        Self::restart_handler().await.map_err(|err| {
-            Status::new(Code::Internal, format!("Failed to restart the node: {err}"))
+        let local_node_registry_path: String = request.get_ref().local_node_registry_path.clone();
+        let local_node_registry_path = PathBuf::from(local_node_registry_path);
+        let node_registry = NodeRegistry::load(&local_node_registry_path).map_err(|err| {
+            Status::new(
+                Code::Internal,
+                format!("Could not open local node registry with {err}"),
+            )
+        })?;
+        let peer_id = PeerId::from_bytes(&request.get_ref().peer_id)
+            .map_err(|err| Status::new(Code::Internal, format!("Failed to parse PeerId: {err}")))?;
+
+        Self::restart_handler(node_registry, peer_id, request.get_ref().preserve_peer_id)
+            .await
+            .map_err(|err| {
+                Status::new(Code::Internal, format!("Failed to restart the node: {err}"))
+            })?;
+
+        Ok(Response::new(NodeProcessRestartResponse {}))
+    }
+
+    async fn restart_node_service(
+        &self,
+        request: Request<NodeServiceRestartRequest>,
+    ) -> Result<Response<NodeServiceRestartResponse>, Status> {
+        println!("RPC request received {:?}", request.get_ref());
+        info!("RPC request received {:?}", request.get_ref());
+
+        let node_registry_path = get_node_registry_path().map_err(|err| {
+            Status::new(
+                Code::Internal,
+                format!("Could not obtain node registry path {err}"),
+            )
+        })?;
+        let node_registry = NodeRegistry::load(&node_registry_path).map_err(|err| {
+            Status::new(
+                Code::Internal,
+                format!("Could not open local node registry with {err}"),
+            )
         })?;
 
-        Ok(Response::new(RestartResponse {}))
+        let peer_id = PeerId::from_bytes(&request.get_ref().peer_id)
+            .map_err(|err| Status::new(Code::Internal, format!("Failed to parse PeerId: {err}")))?;
+
+        Self::restart_handler(node_registry, peer_id, request.get_ref().preserve_peer_id)
+            .await
+            .map_err(|err| {
+                Status::new(Code::Internal, format!("Failed to restart the node: {err}"))
+            })?;
+
+        Ok(Response::new(NodeServiceRestartResponse {}))
     }
 }
 
 impl SafeNodeManagerDaemon {
-    async fn restart_handler() -> Result<()> {
-        let mut node_registry = NodeRegistry::load(&get_node_registry_path()?)?;
-
-        let mut node = &mut node_registry.nodes[0];
+    async fn restart_handler(
+        mut node_registry: NodeRegistry,
+        peer_id: PeerId,
+        preserve_peer_id: bool,
+    ) -> Result<()> {
+        let node = node_registry
+            .nodes
+            .iter_mut()
+            .find(|node| node.peer_id.is_some_and(|id| id == peer_id))
+            .ok_or_eyre(format!("Could not find the provided PeerId: {peer_id:?}"))?;
         let rpc_client = RpcClient::from_socket_addr(node.rpc_socket_addr);
 
-        daemon_control::restart_safenode(
-            &mut node,
-            &rpc_client,
-            node_registry.bootstrap_peers.clone(),
-            node_registry.environment_variables.clone(),
-            &NodeServiceManager {},
-        )
-        .await?;
+        if preserve_peer_id {
+            daemon_control::restart_safenode_same_peer_id(
+                node,
+                &rpc_client,
+                node_registry.bootstrap_peers.clone(),
+                node_registry.environment_variables.clone(),
+                &NodeServiceManager {},
+            )
+            .await?;
+        } else {
+        }
+
         node_registry.save()?;
 
         Ok(())
@@ -107,10 +170,12 @@ async fn main() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::PORT;
     use color_eyre::eyre::{bail, Result};
-    use sn_protocol::safenode_manager_proto::{
-        safe_node_manager_client::SafeNodeManagerClient, RestartRequest,
+    use sn_protocol::{
+        node_registry::{get_local_node_registry_path, NodeRegistry},
+        safenode_manager_proto::safe_node_manager_client::SafeNodeManagerClient,
     };
     use std::{
         net::{Ipv4Addr, SocketAddr},
@@ -126,8 +191,16 @@ mod tests {
         ))
         .await?;
 
+        let peer_id = NodeRegistry::load(&get_local_node_registry_path()?)?.nodes[2]
+            .peer_id
+            .unwrap();
+
         let response = rpc_client
-            .restart(Request::new(RestartRequest { delay_millis: 0 }))
+            .restart(Request::new(RestartRequest {
+                peer_id: peer_id.to_bytes(),
+                restart_kind: RestartKind::LocalNode as i32,
+                delay_millis: 0,
+            }))
             .await?;
         println!("response: {response:?}");
 

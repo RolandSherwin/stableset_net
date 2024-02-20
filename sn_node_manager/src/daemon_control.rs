@@ -7,12 +7,21 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{node_control, service::ServiceControl, VerbosityLevel};
-use color_eyre::Result;
+use color_eyre::{
+    eyre::{eyre, OptionExt},
+    Result,
+};
 use libp2p::Multiaddr;
 use service_manager::{ServiceInstallCtx, ServiceLabel};
 use sn_node_rpc_client::RpcActions;
-use sn_protocol::node_registry::Node;
-use std::{ffi::OsString, net::Ipv4Addr, path::PathBuf};
+use sn_protocol::{node::get_safenode_root_dir, node_registry::Node};
+use std::{
+    ffi::OsString,
+    net::Ipv4Addr,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
+use sysinfo::{Pid, PidExt, ProcessExt, SystemExt};
 
 pub fn run(
     address: Ipv4Addr,
@@ -43,32 +52,74 @@ pub fn run(
     Ok(())
 }
 
-pub async fn restart_safenode(
+pub async fn restart_safenode_same_peer_id(
     node: &mut Node,
     rpc_client: &dyn RpcActions,
-    _bootstrap_peers: Vec<Multiaddr>,
+    bootstrap_peers: Vec<Multiaddr>,
     _env_variables: Option<Vec<(String, String)>>,
     service_control: &dyn ServiceControl,
 ) -> Result<()> {
-    node_control::stop(node, service_control).await?;
+    // match restart_kind {
+    //     RestartKind::LocalNode => {
+    //         let pid = node.pid.ok_or_eyre("Could not find node's PeerId")?;
+    //         match sysinfo::System::new_all().process(Pid::from_u32(pid)) {
+    //             Some(process) => {
+    //                 process.kill();
+    //                 println!("Process with PID {} has been killed.", pid);
+    //             }
+    //             None => return Err(eyre!("Process with PID {} not found.", pid).into()),
+    //         }
 
-    // service_control.uninstall(&node.service_name.clone())?;
-    // let install_ctx = node_control::InstallNodeServiceCtxBuilder {
-    //     local: node.local,
-    //     data_dir_path: node.data_dir_path.clone(),
-    //     genesis: node.genesis,
-    //     name: node.service_name.clone(),
-    //     node_port: node.get_safenode_port(),
-    //     bootstrap_peers,
-    //     rpc_socket_addr: node.rpc_socket_addr,
-    //     log_dir_path: node.log_dir_path.clone(),
-    //     safenode_path: node.safenode_path.clone(),
-    //     service_user: node.user.clone(),
-    //     env_variables,
+    //         let root_dir =
+    //             get_safenode_root_dir(node.peer_id.ok_or_eyre("PeerId is present at this point")?)?;
+    //         let node_port = node
+    //             .get_safenode_port()
+    //             .ok_or_eyre("Could not obtain node port")?;
+
+    //         // todo: deduplicate code inside local.rs
+    //         let mut args = Vec::new();
+    //         for peer in bootstrap_peers {
+    //             args.push("--peer".to_string());
+    //             args.push(peer.to_string());
+    //         }
+
+    //         args.push("--local".to_string());
+    //         args.push("--rpc".to_string());
+    //         args.push(node.rpc_socket_addr.to_string());
+    //         args.push("--root_dir".to_string());
+    //         args.push(format!("{root_dir:?}"));
+    //         args.push("--port".to_string());
+    //         args.push(node_port.to_string());
+
+    //         Command::new(&node.safenode_path)
+    //             .args(args)
+    //             .stdout(Stdio::inherit())
+    //             .stderr(Stdio::inherit())
+    //             .spawn()?;
+    //     }
+    //     RestartKind::ServiceNode => {
+    //         node_control::stop(node, service_control).await?;
+
+    //         // service_control.uninstall(&node.service_name.clone())?;
+    //         // let install_ctx = node_control::InstallNodeServiceCtxBuilder {
+    //         //     local: node.local,
+    //         //     data_dir_path: node.data_dir_path.clone(),
+    //         //     genesis: node.genesis,
+    //         //     name: node.service_name.clone(),
+    //         //     node_port: node.get_safenode_port(),
+    //         //     bootstrap_peers,
+    //         //     rpc_socket_addr: node.rpc_socket_addr,
+    //         //     log_dir_path: node.log_dir_path.clone(),
+    //         //     safenode_path: node.safenode_path.clone(),
+    //         //     service_user: node.user.clone(),
+    //         //     env_variables,
+    //         // }
+    //         // .execute()?;
+    //         // service_control.install(install_ctx)?;
+
+    //         node_control::start(node, service_control, rpc_client, VerbosityLevel::Normal).await?;
+    //     }
     // }
-    // .execute()?;
-    // service_control.install(install_ctx)?;
 
-    node_control::start(node, service_control, rpc_client, VerbosityLevel::Normal).await?;
     Ok(())
 }
