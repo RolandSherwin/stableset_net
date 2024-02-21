@@ -137,6 +137,7 @@ pub struct NodeRegistry {
     pub bootstrap_peers: Vec<Multiaddr>,
     pub environment_variables: Option<Vec<(String, String)>>,
     pub faucet_pid: Option<u32>,
+    pub daemon_socket_addr: Option<SocketAddr>,
 }
 
 impl NodeRegistry {
@@ -160,6 +161,7 @@ impl NodeRegistry {
                 bootstrap_peers: vec![],
                 environment_variables: None,
                 faucet_pid: None,
+                daemon_socket_addr: None,
             });
         }
 
@@ -176,6 +178,7 @@ impl NodeRegistry {
                 bootstrap_peers: vec![],
                 environment_variables: None,
                 faucet_pid: None,
+                daemon_socket_addr: None,
             });
         }
 
