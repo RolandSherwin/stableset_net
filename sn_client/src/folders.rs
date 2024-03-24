@@ -187,7 +187,7 @@ impl FoldersApi {
             }
         }
 
-        let payment_info = wallet_client.get_recent_payment_for_addr(&self.as_net_addr())?;
+        let payment_info = wallet_client.get_recent_payment_for_addr(&self.as_net_addr(), true)?;
 
         self.register
             .sync(&mut wallet_client, verify_store, Some(payment_info))
