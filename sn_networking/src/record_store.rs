@@ -47,6 +47,8 @@ const MAX_RECORDS_COUNT: usize = 2048;
 pub struct NodeRecordStore {
     /// The identity of the peer owning the store.
     local_key: KBucketKey<PeerId>,
+    /// The address of the peer owning the store
+    local_address: NetworkAddress,
     /// The configuration of the store.
     config: NodeRecordStoreConfig,
     /// A set of keys, each corresponding to a data `Record` stored on disk.
@@ -185,6 +187,7 @@ impl NodeRecordStore {
         let records = Self::update_records_from_an_existing_store(&config, &encryption_details);
         NodeRecordStore {
             local_key: KBucketKey::from(local_id),
+            local_address: NetworkAddress::from_peer(local_id),
             config,
             records,
             network_event_sender,
@@ -297,18 +300,22 @@ impl NodeRecordStore {
 
         // sort records by distance to our local key
         let mut sorted_records: Vec<_> = self.records.keys().cloned().collect();
-        let self_address = NetworkAddress::from_peer(self.local_key.clone().into_preimage());
         sorted_records.sort_by(|key_a, key_b| {
             let a = NetworkAddress::from_record_key(key_a);
             let b = NetworkAddress::from_record_key(key_b);
-            self_address.distance(&a).cmp(&self_address.distance(&b))
+            self.local_address
+                .distance(&a)
+                .cmp(&self.local_address.distance(&b))
         });
 
-        let distance_range = self_address.distance(&NetworkAddress::from_record_key(
-            &sorted_records[sorted_records.len() - 10],
-        ));
+        let distance_range = self
+            .local_address
+            .distance(&NetworkAddress::from_record_key(
+                &sorted_records[sorted_records.len() - 10],
+            ));
+
         self.distance_range = Some(distance_range);
-        // sorting will be costive, hence pruning in a batch of 10
+        // sorting will be costly, hence pruning in a batch of 10
         (sorted_records.len() - 10..sorted_records.len()).for_each(|i| {
             info!(
                 "Record {i} {:?} will be pruned to free up space for new records",
@@ -384,6 +391,14 @@ impl NodeRecordStore {
         let record_key = PrettyPrintRecordKey::from(&r.key).into_owned();
         trace!("PUT a verified Record: {record_key:?}");
 
+        let new_distance = self
+            .local_address
+            .distance(&NetworkAddress::from_record_key(&r.key));
+
+        // set's the local distance range to be further if the new record is further
+        // This assumes the verified record is to be held by _us_...
+        self.distance_range = self.distance_range.map(|range| range.max(new_distance));
+
         self.prune_storage_if_needed_for_record();
 
         let filename = Self::generate_filename(&r.key);
@@ -425,16 +440,26 @@ impl NodeRecordStore {
     #[allow(clippy::mutable_key_type)]
     pub(crate) fn store_cost(&self) -> NanoTokens {
         let stored_records = self.records.len();
-        let cost = calculate_cost_for_records(
-            stored_records,
-            self.received_payment_count,
-            self.config.max_records,
-        );
+        let record_keys_as_hashset: HashSet<&Key> = self.records.keys().collect();
 
-        // vdash metric (if modified please notify at https://github.com/happybeing/vdash/issues):
-        info!("Cost is now {cost:?} for {stored_records:?} stored of {MAX_RECORDS_COUNT:?} max, {:?} times got paid.",
+        if let Some(distance_range) = self.distance_range {
+            let relevant_records =
+                self.get_records_within_distance_range(record_keys_as_hashset, distance_range);
+            let cost = calculate_cost_for_records(
+                relevant_records,
+                self.received_payment_count,
+                self.config.max_records,
+            );
+            // vdash metric (if modified please notify at https://github.com/happybeing/vdash/issues):
+            info!("Cost is now {cost:?} for {stored_records:?} stored of {MAX_RECORDS_COUNT:?} max, {:?} times got paid.",
             self.received_payment_count);
-        NanoTokens::from(cost)
+            NanoTokens::from(cost)
+        } else {
+            info!("Arbitrary cost supplied");
+
+            // arbitrary cost for when no distance range yet set
+            NanoTokens::from(11111)
+        }
     }
 
     /// Notify the node received a payment.
@@ -446,7 +471,7 @@ impl NodeRecordStore {
     #[allow(clippy::mutable_key_type)]
     pub fn get_records_within_distance_range(
         &self,
-        records: &HashSet<Key>,
+        records: HashSet<&Key>,
         distance_range: Distance,
     ) -> usize {
         debug!(
@@ -1016,11 +1041,11 @@ mod tests {
 
         store.set_distance_range(distance);
 
-        let record_keys: HashSet<_> = store.records.keys().cloned().collect();
+        let record_keys = store.records.keys().collect();
 
         // check that the number of records returned is correct
         assert_eq!(
-            store.get_records_within_distance_range(&record_keys, distance),
+            store.get_records_within_distance_range(record_keys, distance),
             stored_records.len() / 2
         );
 
