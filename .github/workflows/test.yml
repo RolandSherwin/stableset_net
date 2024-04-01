@@ -1,0 +1,37 @@
+
+on:
+  # tests must run for a PR to be valid and pass merge queue muster
+  # on main, we want to know that all commits are passing at a glance, any deviation should help bisecting errors
+  # the merge run checks should show on master and enable this clear test/passing history
+  merge_group:
+    branches: [main, alpha*, beta*, rc*]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  def:
+    name: default
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: RolandSherwin/sn-testnet-action@main
+
+  test:
+    name: test 1
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: RolandSherwin/sn-testnet-action@network_commands
+
+  testt:
+    name: test 2
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: RolandSherwin/sn-testnet-action/network_commands@network_commands
