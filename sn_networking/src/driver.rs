@@ -459,9 +459,7 @@ impl NetworkBuilder {
         let swarm = libp2p::SwarmBuilder::with_existing_identity(self.keypair.clone())
             .with_tokio()
             .with_tcp(
-                libp2p::tcp::Config::default()
-                    .port_reuse(true)
-                    .nodelay(true),
+                libp2p::tcp::Config::default().nodelay(true),
                 libp2p::noise::Config::new,
                 libp2p::yamux::Config::default,
             )
