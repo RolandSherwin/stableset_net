@@ -17,11 +17,19 @@ use color_eyre::eyre::{OptionExt, Result};
 use ratatui::{prelude::*, widgets::*};
 use sn_node_manager::{config::get_node_registry_path, VerbosityLevel};
 use sn_peers_acquisition::PeersArgs;
-use sn_service_management::{NodeRegistry, NodeServiceData, ServiceStatus};
-use std::path::PathBuf;
+use sn_service_management::{
+    rpc::{RpcActions, RpcClient},
+    NodeRegistry, NodeServiceData, ServiceStatus,
+};
+use std::{
+    net::SocketAddr,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 use tokio::sync::mpsc::UnboundedSender;
 
 const NODE_START_INTERVAL: usize = 10;
+const NODE_STAT_UPDATE_INTERVAL: Duration = Duration::from_secs(5);
 
 pub struct Home {
     /// Whether the component is active right now, capturing keystrokes + drawing things.
@@ -30,6 +38,7 @@ pub struct Home {
     config: Config,
     // state
     node_services: Vec<NodeServiceData>,
+    node_stats: NodeStats,
     node_table_state: TableState,
     allocated_disk_space: usize,
     discord_username: String,
@@ -66,6 +75,20 @@ impl Home {
         Ok(home)
     }
 
+    fn try_update_stats(&mut self) {
+        if self.node_stats.last_update.elapsed() > NODE_STAT_UPDATE_INTERVAL {
+            self.node_stats.last_update = Instant::now();
+            let action_sender = self.get_actions_sender();
+            tokio::task::spawn_local(async move {
+                if let Err(err) = action_sender.send(Action::HomeActions(HomeActions::UpdateStats))
+                {
+                    error!("Error while sending action: {err:?}");
+                }
+            });
+        } else {
+            return;
+        }
+    }
     fn get_actions_sender(&self) -> Result<UnboundedSender<Action>> {
         self.action_sender
             .clone()
@@ -306,13 +329,18 @@ impl Component for Home {
             layer_one_header[1],
         );
 
-        // top section
-        //
+        // Device Status
+        let device_status_text = if self.node_services.is_empty() {
+            format!("No nodes detected.\nUse the Manage nodes command to begin.")
+        } else {
+            format!("todo: display a table")
+        };
         f.render_widget(
-            Paragraph::new("").block(
+            Paragraph::new(device_status_text).block(
                 Block::default()
-                    .title("Autonomi Node Status")
-                    .borders(Borders::ALL),
+                    .title("Device Status")
+                    .borders(Borders::ALL)
+                    .padding(Padding::uniform(1)),
             ),
             layer_zero[1],
         );
@@ -455,4 +483,38 @@ fn reset_nodes(action_sender: UnboundedSender<Action>) {
             error!("Error while sending action: {err:?}");
         }
     });
+}
+
+struct NodeStats {
+    pub nanos_earned: usize,
+    pub space_allocated: usize,
+    pub memory_usage: usize,
+    pub network_usage: usize,
+
+    pub last_update: Instant,
+}
+
+impl NodeStats {
+    pub fn fetch_all_node_stats(
+        nodes: &Vec<NodeServiceData>,
+        action_sender: UnboundedSender<Action>,
+    ) {
+        let rpc_addrs = nodes
+            .iter()
+            .filter_map(|node| {
+                if node.status == ServiceStatus::Running {
+                    Some((node.rpc_socket_addr, node.data_dir_path.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+    }
+
+    async fn fetch_stat_per_node(rpc_addr: SocketAddr, data_dir: PathBuf) -> Result<()> {
+        let rpc_client = RpcClient::from_socket_addr(rpc_addr);
+        let node_info = rpc_client.network_info().await?;
+
+        Ok(())
+    }
 }
