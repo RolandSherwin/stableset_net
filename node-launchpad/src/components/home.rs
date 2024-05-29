@@ -45,7 +45,6 @@ pub struct Home {
     // state
     node_services: Vec<NodeServiceData>,
     node_stats: NodesStats,
-    node_table_state: TableState,
     allocated_disk_space: usize,
     discord_username: String,
     // Currently the node registry file does not support concurrent actions and thus can lead to
@@ -72,7 +71,6 @@ impl Home {
             node_services: Default::default(),
             node_stats: NodesStats::new(),
             allocated_disk_space,
-            node_table_state: Default::default(),
             lock_registry: Default::default(),
             discord_username: discord_username.to_string(),
             safenode_path,
@@ -84,7 +82,6 @@ impl Home {
 
     /// Tries to trigger the update of node stats if the last update was more than `NODE_STAT_UPDATE_INTERVAL` ago.
     /// The result is sent via the HomeActions::NodesStatsObtained action.
-    // todo: the initial fetch has to happen as soon as we have the action_sender allocated.
     fn try_update_node_stats(&mut self, force_update: bool) -> Result<()> {
         if self.node_stats.last_update.elapsed() > NODE_STAT_UPDATE_INTERVAL || force_update {
             self.node_stats.last_update = Instant::now();
@@ -107,13 +104,9 @@ impl Home {
             .filter(|node| node.status != ServiceStatus::Removed)
             .collect();
         info!(
-            "Loaded node registry. Runnign nodes: {:?}",
+            "Loaded node registry. Running nodes: {:?}",
             self.node_services.len()
         );
-
-        if !self.node_services.is_empty() && self.node_table_state.selected().is_none() {
-            self.node_table_state.select(Some(0));
-        }
 
         Ok(())
     }
@@ -129,50 +122,6 @@ impl Home {
                 }
             })
             .collect()
-    }
-
-    fn select_next_table_item(&mut self) {
-        let i = match self.node_table_state.selected() {
-            Some(i) => {
-                if i >= self.node_services.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            }
-            None => 0,
-        };
-        self.node_table_state.select(Some(i));
-    }
-
-    fn select_previous_table_item(&mut self) {
-        let i = match self.node_table_state.selected() {
-            Some(i) => {
-                if i == 0 {
-                    self.node_services.len() - 1
-                } else {
-                    i - 1
-                }
-            }
-            None => 0,
-        };
-        self.node_table_state.select(Some(i));
-    }
-
-    #[allow(dead_code)]
-    fn unselect_table_item(&mut self) {
-        self.node_table_state.select(None);
-    }
-
-    #[allow(dead_code)]
-    fn get_service_name_of_selected_table_item(&self) -> Option<String> {
-        let Some(service_idx) = self.node_table_state.selected() else {
-            warn!("No item selected from table, not removing anything");
-            return None;
-        };
-        self.node_services
-            .get(service_idx)
-            .map(|data| data.service_name.clone())
     }
 }
 
@@ -295,12 +244,6 @@ impl Component for Home {
                 return Ok(Some(Action::SwitchScene(Scene::ResourceAllocationInputBox)));
             }
 
-            Action::HomeActions(HomeActions::PreviousTableItem) => {
-                self.select_previous_table_item();
-            }
-            Action::HomeActions(HomeActions::NextTableItem) => {
-                self.select_next_table_item();
-            }
             _ => {}
         }
         Ok(None)
@@ -410,8 +353,9 @@ impl Component for Home {
             // "todo: display a table".to_string()
         };
 
-        // Node List
-        let rows: Vec<_> = self
+        // ==== Node Status =====
+
+        let node_rows: Vec<_> = self
             .node_services
             .iter()
             .filter_map(|n| {
@@ -419,43 +363,49 @@ impl Component for Home {
                 if n.status == ServiceStatus::Removed {
                     return None;
                 }
-                let service_name = n.service_name.clone();
                 let peer_id = peer_id.map(|p| p.to_string()).unwrap_or("-".to_string());
                 let status = format!("{:?}", n.status);
 
-                let row = vec![service_name, peer_id, status];
+                let row = vec![peer_id, status];
                 Some(Row::new(row))
             })
             .collect();
 
-        let widths = [
-            Constraint::Max(15),
-            Constraint::Min(30),
-            Constraint::Max(10),
-        ];
-        // give green borders if we are running
-        let table_border_style = if self.get_running_nodes().len() > 1 {
-            Style::default().green()
+        if node_rows.is_empty() {
+            f.render_widget(
+                Paragraph::new("Nodes will appear here when added").block(
+                    Block::default()
+                        .title("Node Status")
+                        .borders(Borders::ALL)
+                        .padding(Padding::uniform(1)),
+                ),
+                layer_zero[2],
+            );
         } else {
-            Style::default()
-        };
-        let table = Table::new(rows, widths)
-            .column_spacing(2)
-            .header(
-                Row::new(vec!["Service", "PeerId", "Status"])
-                    .style(Style::new().bold())
-                    .bottom_margin(1),
-            )
-            .highlight_style(Style::new().reversed())
-            .block(
-                Block::default()
-                    .title("Node list")
-                    .borders(Borders::ALL)
-                    .border_style(table_border_style),
-            )
-            .highlight_symbol(">");
+            let node_widths = [Constraint::Min(30), Constraint::Max(10)];
+            // give green borders if we are running
+            let table_border_style = if self.get_running_nodes().len() > 1 {
+                Style::default().green()
+            } else {
+                Style::default()
+            };
+            let table = Table::new(node_rows, node_widths)
+                .column_spacing(2)
+                .header(
+                    Row::new(vec!["PeerId", "Status"])
+                        .style(Style::new().bold())
+                        .bottom_margin(1),
+                )
+                .highlight_style(Style::new().reversed())
+                .block(
+                    Block::default()
+                        .title("Node Status")
+                        .borders(Borders::ALL)
+                        .border_style(table_border_style),
+                );
 
-        f.render_stateful_widget(table, layer_zero[2], &mut self.node_table_state);
+            f.render_widget(table, layer_zero[2]);
+        }
 
         // popup
         if self.lock_registry {

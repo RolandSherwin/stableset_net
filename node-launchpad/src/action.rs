@@ -46,9 +46,6 @@ pub enum HomeActions {
 
     TriggerDiscordUsernameInputBox,
     TriggerResourceAllocationInputBox,
-
-    PreviousTableItem,
-    NextTableItem,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
