@@ -12,6 +12,7 @@ use strum::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
 pub enum Action {
+    FooterActions(FooterActions),
     HomeActions(HomeActions),
     TabActions(TabActions),
     SwitchScene(Scene),
@@ -52,4 +53,9 @@ pub enum HomeActions {
 pub enum TabActions {
     NextTab,
     PreviousTab,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Display, Deserialize)]
+pub enum FooterActions {
+    AtleastOneNodePresent(bool),
 }
