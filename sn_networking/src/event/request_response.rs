@@ -38,18 +38,6 @@ impl SwarmDriver {
                     // we can handle it and send the OK response here.
                     // As the handle result is unimportant to the sender.
                     match request {
-                        Request::Cmd(sn_protocol::messages::Cmd::Replicate { holder, keys }) => {
-                            let response = Response::Cmd(
-                                sn_protocol::messages::CmdResponse::Replicate(Ok(())),
-                            );
-
-                            self.queue_network_swarm_cmd(NetworkSwarmCmd::SendResponse {
-                                resp: response,
-                                channel: MsgResponder::FromPeer(channel),
-                            });
-
-                            self.add_keys_to_replication_fetcher(holder, keys);
-                        }
                         Request::Cmd(sn_protocol::messages::Cmd::QuoteVerification {
                             quotes,
                             ..
@@ -226,14 +214,6 @@ impl SwarmDriver {
             .kademlia
             .store_mut()
             .record_addresses_ref();
-        let keys_to_fetch = self
-            .replication_fetcher
-            .add_keys(holder, incoming_keys, all_keys);
-        if keys_to_fetch.is_empty() {
-            debug!("no waiting keys to fetch from the network");
-        } else {
-            self.send_event(NetworkEvent::KeysToFetchForReplication(keys_to_fetch));
-        }
 
         // Only trigger chunk_proof check based every X% of the time
         let mut rng = thread_rng();

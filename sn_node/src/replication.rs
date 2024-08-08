@@ -20,11 +20,6 @@ use sn_protocol::{
 use tokio::task::{spawn, JoinHandle};
 
 impl Node {
-    /// Sends _all_ record keys every interval to all peers within the REPLICATE_RANGE.
-    pub(crate) fn try_interval_replication(network: Network) {
-        network.trigger_interval_replication()
-    }
-
     /// Get the Record from a peer or from the network without waiting.
     pub(crate) fn fetch_replication_keys_without_wait(
         &self,
@@ -166,15 +161,6 @@ impl Node {
             #[allow(clippy::mutable_key_type)] // for Bytes in NetworkAddress
             let keys = vec![(data_addr.clone(), record_type.clone())];
 
-            for peer_id in sorted_based_on_addr {
-                debug!("Replicating fresh record {pretty_key:?} to {peer_id:?}");
-                let request = Request::Cmd(Cmd::Replicate {
-                    holder: our_address.clone(),
-                    keys: keys.clone(),
-                });
-
-                network.send_req_ignore_reply(request, *peer_id);
-            }
             debug!(
                 "Completed replicate fresh record {pretty_key:?} on store, in {:?}",
                 start.elapsed()

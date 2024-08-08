@@ -130,9 +130,6 @@ pub enum LocalSwarmCmd {
     },
     // Notify a fetch completion
     FetchCompleted((RecordKey, RecordType)),
-    /// Triggers interval repliation
-    /// NOTE: This does result in outgoing messages, but is produced locally
-    TriggerIntervalReplication,
 }
 
 /// Commands to send to the Swarm
@@ -277,9 +274,6 @@ impl Debug for LocalSwarmCmd {
                     "LocalSwarmCmd::FetchCompleted({record_type:?} : {:?})",
                     PrettyPrintRecordKey::from(key)
                 )
-            }
-            LocalSwarmCmd::TriggerIntervalReplication => {
-                write!(f, "LocalSwarmCmd::TriggerIntervalReplication")
             }
         }
     }
@@ -542,10 +536,6 @@ impl SwarmDriver {
         let start = Instant::now();
         let mut cmd_string;
         match cmd {
-            LocalSwarmCmd::TriggerIntervalReplication => {
-                cmd_string = "TriggerIntervalReplication";
-                self.try_interval_replication()?;
-            }
             LocalSwarmCmd::GetLocalStoreCost { key, sender } => {
                 cmd_string = "GetLocalStoreCost";
                 let (cost, quoting_metrics) = self
@@ -632,37 +622,11 @@ impl SwarmDriver {
                             .kademlia
                             .store_mut()
                             .get_farthest();
-                        self.replication_fetcher.set_farthest_on_full(farthest);
                     }
                     Err(_) => {
                         // Nothing special to do for these errors,
                         // All error cases are further logged and bubbled up below
                     }
-                }
-
-                // No matter storing the record succeeded or not,
-                // the entry shall be removed from the `replication_fetcher`.
-                // In case of local store error, re-attempt will be carried out
-                // within the next replication round.
-                let new_keys_to_fetch = self
-                    .replication_fetcher
-                    .notify_about_new_put(key.clone(), record_type);
-
-                if !new_keys_to_fetch.is_empty() {
-                    self.send_event(NetworkEvent::KeysToFetchForReplication(new_keys_to_fetch));
-                }
-
-                // The record_store will prune far records and setup a `distance range`,
-                // once reached the `max_records` cap.
-                if let Some(distance) = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .get_farthest_replication_distance_bucket()
-                {
-                    self.replication_fetcher
-                        .set_replication_distance_range(distance);
                 }
 
                 if let Err(err) = result {
@@ -810,12 +774,6 @@ impl SwarmDriver {
                     PrettyPrintRecordKey::from(&key)
                 );
                 cmd_string = "FetchCompleted";
-                let new_keys_to_fetch = self
-                    .replication_fetcher
-                    .notify_fetch_early_completed(key, record_type);
-                if !new_keys_to_fetch.is_empty() {
-                    self.send_event(NetworkEvent::KeysToFetchForReplication(new_keys_to_fetch));
-                }
             }
         }
 
@@ -931,67 +889,5 @@ impl SwarmDriver {
         }
 
         let _ = self.quotes_history.insert(peer_id, quote);
-    }
-
-    fn try_interval_replication(&mut self) -> Result<()> {
-        // get closest peers from buckets, sorted by increasing distance to us
-        let our_peer_id = self.self_peer_id.into();
-        let closest_k_peers = self
-            .swarm
-            .behaviour_mut()
-            .kademlia
-            .get_closest_local_peers(&our_peer_id)
-            // Map KBucketKey<PeerId> to PeerId.
-            .map(|key| key.into_preimage());
-
-        // Only grab the closest nodes within the REPLICATE_RANGE
-        let mut replicate_targets = closest_k_peers
-            .into_iter()
-            // add some leeway to allow for divergent knowledge
-            .take(REPLICATION_PEERS_COUNT)
-            .collect::<Vec<_>>();
-
-        let now = Instant::now();
-        self.replication_targets
-            .retain(|_peer_id, timestamp| *timestamp > now);
-        // Only carry out replication to peer that not replicated to it recently
-        replicate_targets.retain(|peer_id| !self.replication_targets.contains_key(peer_id));
-        if replicate_targets.is_empty() {
-            return Ok(());
-        }
-
-        let all_records: Vec<_> = self
-            .swarm
-            .behaviour_mut()
-            .kademlia
-            .store_mut()
-            .record_addresses_ref()
-            .values()
-            .cloned()
-            .collect();
-
-        if !all_records.is_empty() {
-            debug!(
-                "Sending a replication list of {} keys to {replicate_targets:?} ",
-                all_records.len()
-            );
-            let request = Request::Cmd(Cmd::Replicate {
-                holder: NetworkAddress::from_peer(self.self_peer_id),
-                keys: all_records,
-            });
-            for peer_id in replicate_targets {
-                self.queue_network_swarm_cmd(NetworkSwarmCmd::SendRequest {
-                    req: request.clone(),
-                    peer: peer_id,
-                    sender: None,
-                });
-
-                let _ = self
-                    .replication_targets
-                    .insert(peer_id, now + REPLICATION_TIMEOUT);
-            }
-        }
-
-        Ok(())
     }
 }

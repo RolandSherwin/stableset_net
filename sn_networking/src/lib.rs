@@ -24,7 +24,6 @@ mod network_discovery;
 mod record_store;
 mod record_store_api;
 mod relay_manager;
-mod replication_fetcher;
 mod spends;
 pub mod target_arch;
 mod transfers;
@@ -787,10 +786,6 @@ impl Network {
         self.send_local_swarm_cmd(LocalSwarmCmd::GetSwarmLocalState(sender));
         let state = receiver.await?;
         Ok(state)
-    }
-
-    pub fn trigger_interval_replication(&self) {
-        self.send_local_swarm_cmd(LocalSwarmCmd::TriggerIntervalReplication)
     }
 
     pub fn record_node_issues(&self, peer_id: PeerId, issue: NodeIssue) {

@@ -21,15 +21,6 @@ pub use sn_transfers::{Hash, PaymentQuote};
 #[allow(clippy::large_enum_variant)]
 #[derive(Eq, PartialEq, Clone, Serialize, Deserialize)]
 pub enum Cmd {
-    /// Write operation to notify peer fetch a list of [`NetworkAddress`] from the holder.
-    ///
-    /// [`NetworkAddress`]: crate::NetworkAddress
-    Replicate {
-        /// Holder of the replication keys.
-        holder: NetworkAddress,
-        /// Keys of copy that shall be replicated.
-        keys: Vec<(NetworkAddress, RecordType)>,
-    },
     /// Write operation to notify nodes a list of PaymentQuote collected.
     QuoteVerification {
         target: NetworkAddress,
@@ -46,14 +37,6 @@ pub enum Cmd {
 impl std::fmt::Debug for Cmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Cmd::Replicate { holder, keys } => {
-                let first_ten_keys: Vec<_> = keys.iter().take(10).collect();
-                f.debug_struct("Cmd::Replicate")
-                    .field("holder", holder)
-                    .field("keys_len", &keys.len())
-                    .field("first_ten_keys", &first_ten_keys)
-                    .finish()
-            }
             Cmd::QuoteVerification { target, quotes } => f
                 .debug_struct("Cmd::QuoteVerification")
                 .field("target", target)
@@ -77,7 +60,6 @@ impl Cmd {
     /// Used to send a cmd to the close group of the address.
     pub fn dst(&self) -> NetworkAddress {
         match self {
-            Cmd::Replicate { holder, .. } => holder.clone(),
             Cmd::QuoteVerification { target, .. } => target.clone(),
             Cmd::PeerConsideredAsBad { bad_peer, .. } => bad_peer.clone(),
         }
@@ -87,14 +69,6 @@ impl Cmd {
 impl std::fmt::Display for Cmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Cmd::Replicate { holder, keys } => {
-                write!(
-                    f,
-                    "Cmd::Replicate({:?} has {} keys)",
-                    holder.as_peer_id(),
-                    keys.len()
-                )
-            }
             Cmd::QuoteVerification { target, quotes } => {
                 write!(
                     f,

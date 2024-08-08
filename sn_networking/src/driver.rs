@@ -22,7 +22,6 @@ use crate::{
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
     relay_manager::RelayManager,
-    replication_fetcher::ReplicationFetcher,
     target_arch::{interval, spawn, Instant},
     version::{
         IDENTIFY_CLIENT_VERSION_STR, IDENTIFY_NODE_VERSION_STR, IDENTIFY_PROTOCOL_STR,
@@ -590,7 +589,6 @@ impl NetworkBuilder {
         let swarm = Swarm::new(transport, behaviour, peer_id, swarm_config);
 
         let bootstrap = ContinuousBootstrap::new();
-        let replication_fetcher = ReplicationFetcher::new(peer_id, network_event_sender.clone());
         let mut relay_manager = RelayManager::new(peer_id);
         if !is_client {
             relay_manager.enable_hole_punching(self.is_behind_home_network);
@@ -606,7 +604,6 @@ impl NetworkBuilder {
             peers_in_rt: 0,
             bootstrap,
             relay_manager,
-            replication_fetcher,
             #[cfg(feature = "open-metrics")]
             network_metrics,
             // kept here to ensure we can push messages to the channel
@@ -658,7 +655,6 @@ pub struct SwarmDriver {
     pub(crate) bootstrap: ContinuousBootstrap,
     pub(crate) relay_manager: RelayManager,
     /// The peers that are closer to our PeerId. Includes self.
-    pub(crate) replication_fetcher: ReplicationFetcher,
     #[cfg(feature = "open-metrics")]
     pub(crate) network_metrics: Option<NetworkMetrics>,
 
@@ -760,7 +756,6 @@ impl SwarmDriver {
 
                             let replication_distance = self.swarm.behaviour_mut().kademlia.store_mut().get_farthest_replication_distance_bucket().unwrap_or(1);
                             // the distance range within the replication_fetcher shall be in sync as well
-                            self.replication_fetcher.set_replication_distance_range(replication_distance);
                         }
                     }
                 }
