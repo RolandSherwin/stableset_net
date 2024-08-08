@@ -11,7 +11,6 @@ use crate::{
     cmd::LocalSwarmCmd,
     event::NodeEvent,
     multiaddr_is_global, multiaddr_strip_p2p,
-    relay_manager::is_a_relayed_peer,
     target_arch::Instant,
     version::{IDENTIFY_NODE_VERSION_STR, IDENTIFY_PROTOCOL_STR},
     NetworkEvent, Result, SwarmDriver,
@@ -60,19 +59,6 @@ impl SwarmDriver {
                 event_string = "kad_event";
                 self.handle_kad_event(kad_event)?;
             }
-            SwarmEvent::Behaviour(NodeEvent::RelayClient(event)) => {
-                event_string = "relay_client_event";
-
-                info!(?event, "relay client event");
-
-                if let libp2p::relay::client::Event::ReservationReqAccepted {
-                    relay_peer_id, ..
-                } = *event
-                {
-                    self.relay_manager
-                        .on_successful_reservation_by_client(&relay_peer_id, &mut self.swarm);
-                }
-            }
             #[cfg(feature = "upnp")]
             SwarmEvent::Behaviour(NodeEvent::Upnp(upnp_event)) => {
                 #[cfg(feature = "open-metrics")]
@@ -89,30 +75,6 @@ impl SwarmDriver {
                 }
             }
 
-            SwarmEvent::Behaviour(NodeEvent::RelayServer(event)) => {
-                #[cfg(feature = "open-metrics")]
-                if let Some(metrics) = &self.network_metrics {
-                    metrics.record(&(*event));
-                }
-
-                event_string = "relay_server_event";
-
-                info!(?event, "relay server event");
-
-                match *event {
-                    libp2p::relay::Event::ReservationReqAccepted {
-                        src_peer_id,
-                        renewed: _,
-                    } => {
-                        self.relay_manager
-                            .on_successful_reservation_by_server(src_peer_id);
-                    }
-                    libp2p::relay::Event::ReservationTimedOut { src_peer_id } => {
-                        self.relay_manager.on_reservation_timeout(src_peer_id);
-                    }
-                    _ => {}
-                }
-            }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 // Record the Identify event for metrics if the feature is enabled.
                 #[cfg(feature = "open-metrics")]
@@ -167,23 +129,6 @@ impl SwarmDriver {
                                 .map(|addr| multiaddr_strip_p2p(&addr))
                                 .collect(),
                         };
-
-                        let has_relayed = is_a_relayed_peer(&addrs);
-
-                        let is_bootstrap_peer = self
-                            .bootstrap_peers
-                            .iter()
-                            .any(|(_ilog2, peers)| peers.contains(&peer_id));
-
-                        // Do not use an `already relayed` peer as `potential relay candidate`.
-                        if !has_relayed && !is_bootstrap_peer && !self.is_client {
-                            debug!("Adding candidate relay server {peer_id:?}, it's not a bootstrap node");
-                            self.relay_manager.add_potential_candidates(
-                                &peer_id,
-                                &addrs,
-                                &info.protocols,
-                            );
-                        }
 
                         // When received an identify from un-dialed peer, try to dial it
                         // The dial shall trigger the same identify to be sent again and confirm
@@ -250,13 +195,6 @@ impl SwarmDriver {
                         if self.local || has_dialed {
                             // A bad node cannot establish a connection with us. So we can add it to the RT directly.
                             self.remove_bootstrap_from_full(peer_id);
-
-                            // Avoid have `direct link format` addrs co-exists with `relay` addr
-                            if has_relayed {
-                                addrs.retain(|multiaddr| {
-                                    multiaddr.iter().any(|p| matches!(p, Protocol::P2pCircuit))
-                                });
-                            }
 
                             debug!(%peer_id, ?addrs, "identify: attempting to add addresses to routing table");
 
@@ -353,8 +291,6 @@ impl SwarmDriver {
             } => {
                 event_string = "listener closed";
                 info!("Listener {listener_id:?} with add {addresses:?} has been closed for {reason:?}");
-                self.relay_manager
-                    .on_listener_closed(&listener_id, &mut self.swarm);
             }
             SwarmEvent::IncomingConnection {
                 connection_id,
@@ -651,10 +587,6 @@ impl SwarmDriver {
                 }
             }
 
-            // skip if the peer is a relay server that we're connected to
-            if self.relay_manager.keep_alive_peer(peer_id) {
-                return true; // retain peer
-            }
 
             // actually remove connection
             let result = self.swarm.close_connection(*connection_id);

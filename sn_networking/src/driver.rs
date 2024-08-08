@@ -21,7 +21,6 @@ use crate::{
     network_discovery::NetworkDiscovery,
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
-    relay_manager::RelayManager,
     replication_fetcher::ReplicationFetcher,
     target_arch::{interval, spawn, Instant},
     version::{
@@ -31,12 +30,10 @@ use crate::{
     GetRecordError, Network, CLOSE_GROUP_SIZE,
 };
 use crate::{transport, NodeIssue};
-use futures::future::Either;
 use futures::StreamExt;
 #[cfg(feature = "local-discovery")]
 use libp2p::mdns;
 use libp2p::Transport as _;
-use libp2p::{core::muxing::StreamMuxerBox, relay};
 use libp2p::{
     identity::Keypair,
     kad::{self, QueryId, Quorum, Record, RecordKey, K_VALUE},
@@ -199,8 +196,6 @@ pub(super) struct NodeBehaviour {
     pub(super) mdns: mdns::tokio::Behaviour,
     #[cfg(feature = "upnp")]
     pub(super) upnp: libp2p::swarm::behaviour::toggle::Toggle<libp2p::upnp::tokio::Behaviour>,
-    pub(super) relay_client: libp2p::relay::client::Behaviour,
-    pub(super) relay_server: libp2p::relay::Behaviour,
     pub(super) kademlia: kad::Behaviour<UnifiedRecordStore>,
     pub(super) request_response: request_response::cbor::Behaviour<Request, Response>,
 }
@@ -538,39 +533,8 @@ impl NetworkBuilder {
         }
         .into(); // Into `Toggle<T>`
 
-        let (relay_transport, relay_behaviour) =
-            libp2p::relay::client::new(self.keypair.public().to_peer_id());
-        let relay_transport = relay_transport
-            .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-            .authenticate(
-                libp2p::noise::Config::new(&self.keypair)
-                    .expect("Signing libp2p-noise static DH keypair failed."),
-            )
-            .multiplex(libp2p::yamux::Config::default())
-            .or_transport(transport);
-
-        let transport = relay_transport
-            .map(|either_output, _| match either_output {
-                Either::Left((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-                Either::Right((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-            })
-            .boxed();
-
-        let relay_server = {
-            let relay_server_cfg = relay::Config {
-                max_reservations: 128,             // Amount of peers we are relaying for
-                max_circuits: 1024, // The total amount of relayed connections at any given moment.
-                max_circuits_per_peer: 256, // Amount of relayed connections per peer (both dst and src)
-                circuit_src_rate_limiters: vec![], // No extra rate limiting for now
-                ..Default::default()
-            };
-            libp2p::relay::Behaviour::new(peer_id, relay_server_cfg)
-        };
-
         let behaviour = NodeBehaviour {
             blocklist: libp2p::allow_block_list::Behaviour::default(),
-            relay_client: relay_behaviour,
-            relay_server,
             #[cfg(feature = "upnp")]
             upnp,
             request_response,
@@ -591,10 +555,6 @@ impl NetworkBuilder {
 
         let bootstrap = ContinuousBootstrap::new();
         let replication_fetcher = ReplicationFetcher::new(peer_id, network_event_sender.clone());
-        let mut relay_manager = RelayManager::new(peer_id);
-        if !is_client {
-            relay_manager.enable_hole_punching(self.is_behind_home_network);
-        }
 
         let swarm_driver = SwarmDriver {
             swarm,
@@ -605,7 +565,6 @@ impl NetworkBuilder {
             is_behind_home_network: self.is_behind_home_network,
             peers_in_rt: 0,
             bootstrap,
-            relay_manager,
             replication_fetcher,
             #[cfg(feature = "open-metrics")]
             network_metrics,
@@ -656,7 +615,6 @@ pub struct SwarmDriver {
     pub(crate) listen_port: Option<u16>,
     pub(crate) peers_in_rt: usize,
     pub(crate) bootstrap: ContinuousBootstrap,
-    pub(crate) relay_manager: RelayManager,
     /// The peers that are closer to our PeerId. Includes self.
     pub(crate) replication_fetcher: ReplicationFetcher,
     #[cfg(feature = "open-metrics")]
@@ -764,7 +722,6 @@ impl SwarmDriver {
                         }
                     }
                 }
-                _ = relay_manager_reservation_interval.tick() => self.relay_manager.try_connecting_to_relay(&mut self.swarm, &self.bad_nodes),
             }
         }
     }

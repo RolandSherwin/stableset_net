@@ -42,8 +42,6 @@ pub(super) enum NodeEvent {
     #[cfg(feature = "local-discovery")]
     Mdns(Box<mdns::Event>),
     Identify(Box<libp2p::identify::Event>),
-    RelayClient(Box<libp2p::relay::client::Event>),
-    RelayServer(Box<libp2p::relay::Event>),
     Void(void::Void),
 }
 
@@ -76,16 +74,6 @@ impl From<mdns::Event> for NodeEvent {
 impl From<libp2p::identify::Event> for NodeEvent {
     fn from(event: libp2p::identify::Event) -> Self {
         NodeEvent::Identify(Box::new(event))
-    }
-}
-impl From<libp2p::relay::client::Event> for NodeEvent {
-    fn from(event: libp2p::relay::client::Event) -> Self {
-        NodeEvent::RelayClient(Box::new(event))
-    }
-}
-impl From<libp2p::relay::Event> for NodeEvent {
-    fn from(event: libp2p::relay::Event) -> Self {
-        NodeEvent::RelayServer(Box::new(event))
     }
 }
 
