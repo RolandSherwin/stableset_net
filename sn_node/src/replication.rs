@@ -20,11 +20,6 @@ use sn_protocol::{
 use tokio::task::{spawn, JoinHandle};
 
 impl Node {
-    /// Sends _all_ record keys every interval to all peers within the REPLICATE_RANGE.
-    pub(crate) fn try_interval_replication(network: Network) {
-        network.trigger_interval_replication()
-    }
-
     /// Get the Record from a peer or from the network without waiting.
     pub(crate) fn fetch_replication_keys_without_wait(
         &self,

@@ -344,18 +344,6 @@ impl Node {
                             }
                         }
                     }
-                    // runs every replication_interval time
-                    _ = replication_interval.tick() => {
-                        let start = Instant::now();
-                        debug!("Periodic replication triggered");
-                        let network = self.network().clone();
-                        self.record_metrics(Marker::IntervalReplicationTriggered);
-
-                        let _handle = spawn(async move {
-                            Self::try_interval_replication(network);
-                            trace!("Periodic replication took {:?}", start.elapsed());
-                        });
-                    }
                     // runs every bad_nodes_check_time time
                     _ = bad_nodes_check_interval.tick() => {
                         let start = Instant::now();
@@ -451,9 +439,6 @@ impl Node {
                 // try replication here
                 let network = self.network().clone();
                 self.record_metrics(Marker::IntervalReplicationTriggered);
-                let _handle = spawn(async move {
-                    Self::try_interval_replication(network);
-                });
             }
             NetworkEvent::PeerRemoved(peer_id, connected_peers) => {
                 event_header = "PeerRemoved";
@@ -462,9 +447,6 @@ impl Node {
 
                 let network = self.network().clone();
                 self.record_metrics(Marker::IntervalReplicationTriggered);
-                let _handle = spawn(async move {
-                    Self::try_interval_replication(network);
-                });
             }
             NetworkEvent::PeerWithUnsupportedProtocol { .. } => {
                 event_header = "PeerWithUnsupportedProtocol";

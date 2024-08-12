@@ -130,9 +130,6 @@ pub enum LocalSwarmCmd {
     },
     // Notify a fetch completion
     FetchCompleted((RecordKey, RecordType)),
-    /// Triggers interval repliation
-    /// NOTE: This does result in outgoing messages, but is produced locally
-    TriggerIntervalReplication,
 }
 
 /// Commands to send to the Swarm
@@ -277,9 +274,6 @@ impl Debug for LocalSwarmCmd {
                     "LocalSwarmCmd::FetchCompleted({record_type:?} : {:?})",
                     PrettyPrintRecordKey::from(key)
                 )
-            }
-            LocalSwarmCmd::TriggerIntervalReplication => {
-                write!(f, "LocalSwarmCmd::TriggerIntervalReplication")
             }
         }
     }
@@ -542,10 +536,6 @@ impl SwarmDriver {
         let start = Instant::now();
         let mut cmd_string;
         match cmd {
-            LocalSwarmCmd::TriggerIntervalReplication => {
-                cmd_string = "TriggerIntervalReplication";
-                self.try_interval_replication()?;
-            }
             LocalSwarmCmd::GetLocalStoreCost { key, sender } => {
                 cmd_string = "GetLocalStoreCost";
                 let (cost, quoting_metrics) = self
