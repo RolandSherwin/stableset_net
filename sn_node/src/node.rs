@@ -353,24 +353,6 @@ impl Node {
 
 
                     }
-                    // runs every bad_nodes_check_time time
-                    _ = bad_nodes_check_interval.tick() => {
-                        let start = Instant::now();
-                        debug!("Periodic bad_nodes check triggered");
-                        let network = self.network().clone();
-                        self.record_metrics(Marker::IntervalBadNodesCheckTriggered);
-
-                        let _handle = spawn(async move {
-                            Self::try_bad_nodes_check(network, rolling_index).await;
-                            trace!("Periodic bad_nodes check took {:?}", start.elapsed());
-                        });
-
-                        if rolling_index == 511 {
-                            rolling_index = 0;
-                        } else {
-                            rolling_index += 1;
-                        }
-                    }
                     // runs every balance_forward_interval time
                     _ = balance_forward_interval.tick() => {
                         if cfg!(feature = "reward-forward") {
