@@ -439,7 +439,7 @@ async fn respond_to_gift_request(
         return Ok(response);
     }
 
-    const GIFT_AMOUNT_SNT: &str = "1";
+    const GIFT_AMOUNT_SNT: &str = "100";
     match send_tokens(&client, from, GIFT_AMOUNT_SNT, &key).await {
         Ok(transfer) => {
             println!("Sent tokens to {key}");
