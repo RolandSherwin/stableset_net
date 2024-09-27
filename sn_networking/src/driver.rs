@@ -242,6 +242,7 @@ pub(super) struct NodeBehaviour {
     pub(super) upnp: libp2p::swarm::behaviour::toggle::Toggle<libp2p::upnp::tokio::Behaviour>,
     pub(super) relay_client: libp2p::relay::client::Behaviour,
     pub(super) relay_server: libp2p::relay::Behaviour,
+    pub(super) dcutr: libp2p::dcutr::Behaviour,
     pub(super) kademlia: kad::Behaviour<UnifiedRecordStore>,
     pub(super) request_response: request_response::cbor::Behaviour<Request, Response>,
 }
@@ -644,6 +645,7 @@ impl NetworkBuilder {
             blocklist: libp2p::allow_block_list::Behaviour::default(),
             relay_client: relay_behaviour,
             relay_server,
+            dcutr: libp2p::dcutr::Behaviour::new(peer_id),
             #[cfg(feature = "upnp")]
             upnp,
             request_response,

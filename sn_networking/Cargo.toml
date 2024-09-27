@@ -23,6 +23,7 @@ encrypt-records = []
 [dependencies]
 lazy_static = "~1.4.0"
 libp2p = { version = "0.54.1", features = [
+    "dcutr",
     "tokio",
     "dns",
     "kad",
