@@ -150,53 +150,48 @@ jobs:
   #         # we do many more runs on the nightly run
   #         PROPTEST_CASES: 50
 
-  # e2e:
-  #   if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
-  #   name: E2E tests
-  #   runs-on: ${{ matrix.os }}
-  #   strategy:
-  #     matrix:
-  #       include:
-  #         - os: ubuntu-latest
-  #           safe_path: /home/runner/.local/share/safe
-  #         - os: windows-latest
-  #           safe_path: C:\\Users\\runneradmin\\AppData\\Roaming\\safe
-  #         - os: macos-latest
-  #           safe_path: /Users/runner/Library/Application Support/safe
-  #   steps:
-  #     - uses: actions/checkout@v4
+  e2e:
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
+    name: E2E tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            safe_path: /home/runner/.local/share/safe
+          - os: windows-latest
+            safe_path: C:\\Users\\runneradmin\\AppData\\Roaming\\safe
+          - os: macos-latest
+            safe_path: /Users/runner/Library/Application Support/safe
+    steps:
+      - uses: actions/checkout@v4
 
-  #     - name: Install Rust
-  #       uses: dtolnay/rust-toolchain@stable
-  #     - uses: Swatinem/rust-cache@v2
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
 
-  #     - name: Build binaries
-  #       run: cargo build --release --bin safenode --bin safe
-  #       timeout-minutes: 30
+    #   - name: Build binaries
+    #     run: cargo build --release --bin safenode
+    #     timeout-minutes: 30
 
-  #     - name: Build faucet binary
-  #       run: cargo build --release --bin faucet --features gifting
-  #       timeout-minutes: 30
+      - name: Start a local network
+        uses: RolandSherwin/sn-local-testnet-action@evm
+        with:
+          action: start
+          enable-evm-testnet: true
+          node-path: target/release/safenode
+          platform: ${{ matrix.os }}
+          build: true
 
-  #     - name: Start a local network
-  #       uses: maidsafe/sn-local-testnet-action@main
-  #       with:
-  #         action: start
-  #         interval: 2000
-  #         node-path: target/release/safenode
-  #         faucet-path: target/release/faucet
-  #         platform: ${{ matrix.os }}
-  #         build: true
-
-  #     - name: Check SAFE_PEERS was set
-  #       shell: bash
-  #       run: |
-  #         if [[ -z "$SAFE_PEERS" ]]; then
-  #           echo "The SAFE_PEERS variable has not been set"
-  #           exit 1
-  #         else
-  #           echo "SAFE_PEERS has been set to $SAFE_PEERS"
-  #         fi
+      - name: Check SAFE_PEERS was set
+        shell: bash
+        run: |
+          if [[ -z "$SAFE_PEERS" ]]; then
+            echo "The SAFE_PEERS variable has not been set"
+            exit 1
+          else
+            echo "SAFE_PEERS has been set to $SAFE_PEERS"
+          fi
 
   #     # only these unit tests require a network, the rest are run above
   #     - name: Run sn_client --tests
