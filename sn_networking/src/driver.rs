@@ -799,8 +799,8 @@ pub struct SwarmDriver {
     #[cfg(feature = "open-metrics")]
     pub(crate) metrics_recorder: Option<NetworkMetricsRecorder>,
 
-    network_cmd_sender: mpsc::Sender<NetworkSwarmCmd>,
-    pub(crate) local_cmd_sender: mpsc::Sender<LocalSwarmCmd>,
+    pub network_cmd_sender: mpsc::Sender<NetworkSwarmCmd>,
+    pub local_cmd_sender: mpsc::Sender<LocalSwarmCmd>,
     local_cmd_receiver: mpsc::Receiver<LocalSwarmCmd>,
     network_cmd_receiver: mpsc::Receiver<NetworkSwarmCmd>,
     event_sender: mpsc::Sender<NetworkEvent>, // Use `self.send_event()` to send a NetworkEvent.

@@ -29,13 +29,12 @@ pub mod target_arch;
 mod transfers;
 mod transport;
 
-use cmd::LocalSwarmCmd;
 use sn_registers::SignedRegister;
 use xor_name::XorName;
 
 // re-export arch dependent deps for use in the crate, or above
 pub use self::{
-    cmd::{NodeIssue, SwarmLocalState},
+    cmd::{LocalSwarmCmd, NetworkSwarmCmd, NodeIssue, SwarmLocalState},
     driver::{
         GetRecordCfg, NetworkBuilder, PutRecordCfg, SwarmDriver, VerificationKind, MAX_PACKET_SIZE,
     },
@@ -48,7 +47,7 @@ pub use self::{
 pub use metrics::service::MetricsRegistries;
 pub use target_arch::{interval, sleep, spawn, Instant, Interval};
 
-use self::{cmd::NetworkSwarmCmd, error::Result};
+use self::error::Result;
 use futures::future::select_all;
 use libp2p::{
     identity::Keypair,

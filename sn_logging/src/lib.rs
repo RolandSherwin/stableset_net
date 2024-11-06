@@ -258,7 +258,7 @@ impl LogBuilder {
                 "SN_LOG",
                 format!("{test_file_name}=TRACE,all,sn_networking=WARN,all"),
             );
-        } else {
+        } else if std::env::var("SN_LOG").is_err() {
             std::env::set_var("SN_LOG", format!("{test_file_name}=TRACE,all"));
         }
 
