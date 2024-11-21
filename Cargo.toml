@@ -16,6 +16,7 @@ members = [
     "ant-token-supplies",
     "autonomi",
     "autonomi-cli",
+    "bootstrap_cache",
     "evmlib",
     "evm-testnet",
     "nat-detection",
