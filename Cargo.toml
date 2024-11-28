@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "ant-bootstrap-cache",
     "ant-build-info",
     "ant-evm",
     "ant-logging",
@@ -16,7 +17,6 @@ members = [
     "ant-token-supplies",
     "autonomi",
     "autonomi-cli",
-    "bootstrap_cache",
     "evmlib",
     "evm-testnet",
     "nat-detection",
