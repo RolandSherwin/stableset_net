@@ -121,6 +121,7 @@ impl RpcClient {
 #[async_trait]
 impl RpcActions for RpcClient {
     async fn node_info(&self) -> Result<NodeInfo> {
+        info!("Obtaining node info from RPC endpoint at {}", self.endpoint);
         let mut client = self.connect_with_retry().await?;
         let response = client
             .node_info(Request::new(NodeInfoRequest {}))
@@ -143,6 +144,10 @@ impl RpcActions for RpcClient {
         Ok(node_info)
     }
     async fn network_info(&self) -> Result<NetworkInfo> {
+        info!(
+            "Obtaining network info from RPC endpoint at {}",
+            self.endpoint
+        );
         let mut client = self.connect_with_retry().await?;
         let response = client
             .network_info(Request::new(NetworkInfoRequest {}))
@@ -172,6 +177,10 @@ impl RpcActions for RpcClient {
     }
 
     async fn record_addresses(&self) -> Result<Vec<RecordAddress>> {
+        info!(
+            "Obtaining record addresses from RPC endpoint at {}",
+            self.endpoint
+        );
         let mut client = self.connect_with_retry().await?;
         let response = client
             .record_addresses(Request::new(RecordAddressesRequest {}))
@@ -189,6 +198,7 @@ impl RpcActions for RpcClient {
     }
 
     async fn node_restart(&self, delay_millis: u64, retain_peer_id: bool) -> Result<()> {
+        info!("Restarting node through RPC endpoint at {}", self.endpoint);
         let mut client = self.connect_with_retry().await?;
         let _response = client
             .restart(Request::new(RestartRequest {
@@ -204,6 +214,7 @@ impl RpcActions for RpcClient {
     }
 
     async fn node_stop(&self, delay_millis: u64) -> Result<()> {
+        info!("Stopping node through RPC endpoint at {}", self.endpoint);
         let mut client = self.connect_with_retry().await?;
         let _response = client
             .stop(Request::new(StopRequest { delay_millis }))
@@ -216,6 +227,7 @@ impl RpcActions for RpcClient {
     }
 
     async fn node_update(&self, delay_millis: u64) -> Result<()> {
+        info!("Updating node through RPC endpoint at {}", self.endpoint);
         let mut client = self.connect_with_retry().await?;
         let _response = client
             .update(Request::new(UpdateRequest { delay_millis }))
@@ -228,6 +240,10 @@ impl RpcActions for RpcClient {
     }
 
     async fn is_node_connected_to_network(&self, timeout: Duration) -> Result<()> {
+        info!(
+            "Checking if node is connected to the network through RPC endpoint at {}",
+            self.endpoint
+        );
         let max_attempts = std::cmp::max(1, timeout.as_secs() / self.retry_delay.as_secs());
         trace!(
             "RPC conneciton max attempts set to: {max_attempts} with retry_delay of {:?}",
@@ -271,6 +287,10 @@ impl RpcActions for RpcClient {
     }
 
     async fn update_log_level(&self, log_levels: String) -> Result<()> {
+        info!(
+            "Updating log level to {} through RPC endpoint at {}",
+            log_levels, self.endpoint
+        );
         let mut client = self.connect_with_retry().await?;
         let _response = client
             .update_log_level(Request::new(UpdateLogLevelRequest {

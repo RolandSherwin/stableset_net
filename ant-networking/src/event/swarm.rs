@@ -375,7 +375,11 @@ impl SwarmDriver {
 
                 let _ = self.live_connected_peers.insert(
                     connection_id,
-                    (peer_id, Instant::now() + Duration::from_secs(60)),
+                    (
+                        peer_id,
+                        endpoint.get_remote_address().clone(),
+                        Instant::now() + Duration::from_secs(60),
+                    ),
                 );
                 self.insert_latest_established_connection_ids(
                     connection_id,
@@ -406,7 +410,7 @@ impl SwarmDriver {
             } => {
                 event_string = "OutgoingConnErr";
                 warn!("OutgoingConnectionError to {failed_peer_id:?} on {connection_id:?} - {error:?}");
-                let _ = self.live_connected_peers.remove(&connection_id);
+                let connection_details = self.live_connected_peers.remove(&connection_id);
                 self.record_connection_metrics();
 
                 // we need to decide if this was a critical error and the peer should be removed from the routing table
@@ -506,6 +510,12 @@ impl SwarmDriver {
                     }
                 };
 
+                if let (Some((_, failed_addr, _)), Some(bootstrap_cache)) =
+                    (connection_details, self.bootstrap_cache.as_mut())
+                {
+                    bootstrap_cache.update_addr_status(&failed_addr, false);
+                }
+
                 if should_clean_peer {
                     warn!("Tracking issue of {failed_peer_id:?}. Clearing it out for now");
 
@@ -546,6 +556,7 @@ impl SwarmDriver {
                     external_addr_manager
                         .on_incoming_connection_error(local_addr.clone(), &mut self.swarm);
                 }
+
                 let _ = self.live_connected_peers.remove(&connection_id);
                 self.record_connection_metrics();
             }
@@ -641,7 +652,7 @@ impl SwarmDriver {
         self.last_connection_pruning_time = Instant::now();
 
         let mut removed_conns = 0;
-        self.live_connected_peers.retain(|connection_id, (peer_id, timeout_time)| {
+        self.live_connected_peers.retain(|connection_id, (peer_id, _addr, timeout_time)| {
 
             // skip if timeout isn't reached yet
             if Instant::now() < *timeout_time {

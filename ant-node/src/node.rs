@@ -159,7 +159,6 @@ impl NodeBuilder {
         network_builder.listen_addr(self.addr);
         #[cfg(feature = "open-metrics")]
         network_builder.metrics_server_port(self.metrics_server_port);
-        network_builder.initial_peers(self.initial_peers.clone());
         network_builder.is_behind_home_network(self.is_behind_home_network);
 
         #[cfg(feature = "upnp")]
