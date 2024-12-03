@@ -313,6 +313,7 @@ pub async fn run_network(
             &rpc_client,
         )
         .await?;
+        debug!("Node {number} has been launched");
         node_registry.nodes.push(node.clone());
         let bootstrap_peers = node
             .listen_addr
@@ -417,11 +418,16 @@ pub async fn run_node(
         run_options.rewards_address,
         run_options.evm_network.clone(),
     )?;
+    debug!(
+        "Node {} has been launched, waiting for {}ms",
+        run_options.number, run_options.interval
+    );
     launcher.wait(run_options.interval);
 
     let node_info = rpc_client.node_info().await?;
     let peer_id = node_info.peer_id;
     let network_info = rpc_client.network_info().await?;
+    debug!("Got node and network info for node {}", run_options.number);
     let connected_peers = Some(network_info.connected_peers);
     let listen_addrs = network_info
         .listeners

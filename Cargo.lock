@@ -851,6 +851,7 @@ name = "ant-networking"
 version = "0.19.5"
 dependencies = [
  "aes-gcm-siv",
+ "ant-bootstrap-cache",
  "ant-build-info",
  "ant-evm",
  "ant-protocol",
