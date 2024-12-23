@@ -42,11 +42,9 @@ use ant_protocol::{
     NetworkAddress, PrettyPrintKBucketKey, PrettyPrintRecordKey,
 };
 use ant_registers::SignedRegister;
-use futures::future::Either;
 use futures::StreamExt;
 #[cfg(feature = "local")]
 use libp2p::mdns;
-use libp2p::{core::muxing::StreamMuxerBox, relay};
 use libp2p::{
     identity::Keypair,
     kad::{self, QueryId, Quorum, Record, RecordKey, K_VALUE},
@@ -258,8 +256,8 @@ pub(super) struct NodeBehaviour {
     pub(super) mdns: mdns::tokio::Behaviour,
     #[cfg(feature = "upnp")]
     pub(super) upnp: libp2p::swarm::behaviour::toggle::Toggle<libp2p::upnp::tokio::Behaviour>,
-    pub(super) relay_client: libp2p::relay::client::Behaviour,
-    pub(super) relay_server: libp2p::relay::Behaviour,
+    // pub(super) relay_client: libp2p::relay::client::Behaviour,
+    // pub(super) relay_server: libp2p::relay::Behaviour,
     pub(super) kademlia: kad::Behaviour<UnifiedRecordStore>,
     pub(super) request_response: request_response::cbor::Behaviour<Request, Response>,
 }
@@ -519,24 +517,6 @@ impl NetworkBuilder {
             main_transport
         };
 
-        let (relay_transport, relay_behaviour) =
-            libp2p::relay::client::new(self.keypair.public().to_peer_id());
-        let relay_transport = relay_transport
-            .upgrade(libp2p::core::upgrade::Version::V1Lazy)
-            .authenticate(
-                libp2p::noise::Config::new(&self.keypair)
-                    .expect("Signing libp2p-noise static DH keypair failed."),
-            )
-            .multiplex(libp2p::yamux::Config::default())
-            .or_transport(transport);
-
-        let transport = relay_transport
-            .map(|either_output, _| match either_output {
-                Either::Left((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-                Either::Right((peer_id, muxer)) => (peer_id, StreamMuxerBox::new(muxer)),
-            })
-            .boxed();
-
         #[cfg(feature = "open-metrics")]
         let metrics_recorder = if let Some(port) = self.metrics_server_port {
             let metrics_recorder = NetworkMetricsRecorder::new(&mut metrics_registries);
@@ -663,23 +643,21 @@ impl NetworkBuilder {
         }
         .into(); // Into `Toggle<T>`
 
-        let relay_server = {
-            let relay_server_cfg = relay::Config {
-                max_reservations: 128,             // Amount of peers we are relaying for
-                max_circuits: 1024, // The total amount of relayed connections at any given moment.
-                max_circuits_per_peer: 256, // Amount of relayed connections per peer (both dst and src)
-                circuit_src_rate_limiters: vec![], // No extra rate limiting for now
-                // We should at least be able to relay packets with chunks etc.
-                max_circuit_bytes: MAX_PACKET_SIZE as u64,
-                ..Default::default()
-            };
-            libp2p::relay::Behaviour::new(peer_id, relay_server_cfg)
-        };
+        // let relay_server = {
+        //     let relay_server_cfg = relay::Config {
+        //         max_reservations: 128,             // Amount of peers we are relaying for
+        //         max_circuits: 1024, // The total amount of relayed connections at any given moment.
+        //         max_circuits_per_peer: 256, // Amount of relayed connections per peer (both dst and src)
+        //         circuit_src_rate_limiters: vec![], // No extra rate limiting for now
+        //         // We should at least be able to relay packets with chunks etc.
+        //         max_circuit_bytes: MAX_PACKET_SIZE as u64,
+        //         ..Default::default()
+        //     };
+        //     libp2p::relay::Behaviour::new(peer_id, relay_server_cfg)
+        // };
 
         let behaviour = NodeBehaviour {
             blocklist: libp2p::allow_block_list::Behaviour::default(),
-            relay_client: relay_behaviour,
-            relay_server,
             #[cfg(feature = "upnp")]
             upnp,
             request_response,

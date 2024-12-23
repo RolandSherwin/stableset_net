@@ -144,6 +144,7 @@ impl RelayManager {
     }
 
     /// Update client state after we've successfully made reservation with a relay.
+    #[allow(dead_code)]
     pub(crate) fn on_successful_reservation_by_client(
         &mut self,
         peer_id: &PeerId,

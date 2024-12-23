@@ -54,21 +54,7 @@ impl SwarmDriver {
                 event_string = "kad_event";
                 self.handle_kad_event(kad_event)?;
             }
-            SwarmEvent::Behaviour(NodeEvent::RelayClient(event)) => {
-                event_string = "relay_client_event";
 
-                info!(?event, "relay client event");
-
-                if let libp2p::relay::client::Event::ReservationReqAccepted {
-                    relay_peer_id, ..
-                } = *event
-                {
-                    if let Some(relay_manager) = self.relay_manager.as_mut() {
-                        relay_manager
-                            .on_successful_reservation_by_client(&relay_peer_id, &mut self.swarm);
-                    }
-                }
-            }
             #[cfg(feature = "upnp")]
             SwarmEvent::Behaviour(NodeEvent::Upnp(upnp_event)) => {
                 #[cfg(feature = "open-metrics")]
@@ -85,29 +71,6 @@ impl SwarmDriver {
                 }
             }
 
-            SwarmEvent::Behaviour(NodeEvent::RelayServer(event)) => {
-                #[cfg(feature = "open-metrics")]
-                if let Some(metrics_recorder) = &self.metrics_recorder {
-                    metrics_recorder.record(&(*event));
-                }
-
-                event_string = "relay_server_event";
-
-                info!(?event, "relay server event");
-
-                match *event {
-                    libp2p::relay::Event::ReservationReqAccepted {
-                        src_peer_id,
-                        renewed: _,
-                    } => {
-                        self.connected_relay_clients.insert(src_peer_id);
-                    }
-                    libp2p::relay::Event::ReservationTimedOut { src_peer_id } => {
-                        self.connected_relay_clients.remove(&src_peer_id);
-                    }
-                    _ => {}
-                }
-            }
             SwarmEvent::Behaviour(NodeEvent::Identify(iden)) => {
                 // Record the Identify event for metrics if the feature is enabled.
                 #[cfg(feature = "open-metrics")]
@@ -673,6 +636,10 @@ impl SwarmDriver {
         if Instant::now() < self.last_connection_pruning_time + Duration::from_secs(30) {
             return;
         }
+        debug!(
+            "Current libp2p peers pool stats is {:?}",
+            self.swarm.network_info()
+        );
         self.last_connection_pruning_time = Instant::now();
 
         let mut removed_conns = 0;
