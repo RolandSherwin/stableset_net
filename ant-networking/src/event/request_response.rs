@@ -46,7 +46,7 @@ impl SwarmDriver {
                                 channel: MsgResponder::FromPeer(channel),
                             });
 
-                            self.add_keys_to_replication_fetcher(holder, keys);
+                            self.add_keys_to_replication_fetcher(holder, keys)?;
                         }
                         Request::Cmd(ant_protocol::messages::Cmd::PeerConsideredAsBad {
                             detected_by,
@@ -160,12 +160,12 @@ impl SwarmDriver {
         &mut self,
         sender: NetworkAddress,
         incoming_keys: Vec<(NetworkAddress, ValidationType)>,
-    ) {
+    ) -> Result<(), NetworkError> {
         let holder = if let Some(peer_id) = sender.as_peer_id() {
             peer_id
         } else {
             warn!("Replication list sender is not a peer_id {sender:?}");
-            return;
+            return Ok(());
         };
 
         debug!(
@@ -178,7 +178,7 @@ impl SwarmDriver {
         let closest_k_peers = self.get_closest_k_value_local_peers();
         if !closest_k_peers.contains(&holder) || holder == self.self_peer_id {
             debug!("Holder {holder:?} is self or not in replication range.");
-            return;
+            return Ok(());
         }
 
         // On receive a replication_list from a close_group peer, we undertake:
@@ -191,7 +191,7 @@ impl SwarmDriver {
             .behaviour_mut()
             .kademlia
             .store_mut()
-            .record_addresses_ref();
+            .record_addresses_ref()?;
         let keys_to_fetch = self
             .replication_fetcher
             .add_keys(holder, incoming_keys, all_keys);
@@ -200,5 +200,7 @@ impl SwarmDriver {
         } else {
             self.send_event(NetworkEvent::KeysToFetchForReplication(keys_to_fetch));
         }
+
+        Ok(())
     }
 }

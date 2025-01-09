@@ -929,29 +929,7 @@ impl RecordStore for NodeRecordStore {
 
 /// A place holder RecordStore impl for the client that does nothing
 #[derive(Default, Debug)]
-pub struct ClientRecordStore {
-    empty_record_addresses: HashMap<Key, (NetworkAddress, ValidationType)>,
-}
-
-impl ClientRecordStore {
-    pub(crate) fn contains(&self, _key: &Key) -> bool {
-        false
-    }
-
-    pub(crate) fn record_addresses(&self) -> HashMap<NetworkAddress, ValidationType> {
-        HashMap::new()
-    }
-
-    pub(crate) fn record_addresses_ref(&self) -> &HashMap<Key, (NetworkAddress, ValidationType)> {
-        &self.empty_record_addresses
-    }
-
-    pub(crate) fn put_verified(&mut self, _r: Record, _record_type: ValidationType) -> Result<()> {
-        Ok(())
-    }
-
-    pub(crate) fn mark_as_stored(&mut self, _r: Key, _t: ValidationType) {}
-}
+pub struct ClientRecordStore {}
 
 impl RecordStore for ClientRecordStore {
     type RecordsIter<'a> = vec::IntoIter<Cow<'a, Record>>;

@@ -123,6 +123,9 @@ pub enum NetworkError {
     #[error("Record header is incorrect")]
     InCorrectRecordHeader,
 
+    #[error("The operation is not allowed on a client record store")]
+    OperationNotAllowedOnClientRecordStore,
+
     // ---------- Chunk Errors
     #[error("Failed to verify the ChunkProof with the provided quorum")]
     FailedToVerifyChunkProof(NetworkAddress),

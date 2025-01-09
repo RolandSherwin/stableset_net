@@ -72,7 +72,7 @@ pub enum LocalSwarmCmd {
     /// In case the range is too narrow, returns at lease CLOSE_GROUP_SIZE peers.
     GetReplicateCandidates {
         data_addr: NetworkAddress,
-        sender: oneshot::Sender<Vec<PeerId>>,
+        sender: oneshot::Sender<Result<Vec<PeerId>>>,
     },
     // Returns up to K_VALUE peers from all the k-buckets from the local Routing Table.
     // And our PeerId as well.
@@ -88,11 +88,11 @@ pub enum LocalSwarmCmd {
     /// Check if the local RecordStore contains the provided key
     RecordStoreHasKey {
         key: RecordKey,
-        sender: oneshot::Sender<bool>,
+        sender: oneshot::Sender<Result<bool>>,
     },
     /// Get the Addresses of all the Records held locally
     GetAllLocalRecordAddresses {
-        sender: oneshot::Sender<HashMap<NetworkAddress, ValidationType>>,
+        sender: oneshot::Sender<Result<HashMap<NetworkAddress, ValidationType>>>,
     },
     /// Get data from the local RecordStore
     GetLocalRecord {
@@ -103,7 +103,7 @@ pub enum LocalSwarmCmd {
     /// Returns the quoting metrics and whether the record at `key` is already stored locally
     GetLocalQuotingMetrics {
         key: RecordKey,
-        sender: oneshot::Sender<Option<(QuotingMetrics, bool)>>,
+        sender: oneshot::Sender<Result<(QuotingMetrics, bool)>>,
     },
     /// Notify the node received a payment.
     PaymentReceived,
@@ -586,17 +586,19 @@ impl SwarmDriver {
                 ) = self.kbuckets_status();
                 let estimated_network_size =
                     Self::estimate_network_size(peers_in_non_full_buckets, num_of_full_buckets);
-                let Some((quoting_metrics, is_already_stored)) = self
+                let (quoting_metrics, is_already_stored) = match self
                     .swarm
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
                     .quoting_metrics(&key, Some(estimated_network_size as u64))
-                else {
-                    let _res = sender.send(None);
-                    return Ok(());
+                {
+                    Ok(res) => res,
+                    Err(err) => {
+                        let _res = sender.send(Err(err));
+                        return Ok(());
+                    }
                 };
-
                 self.record_metrics(Marker::QuotingMetrics {
                     quoting_metrics: &quoting_metrics,
                 });
@@ -635,7 +637,7 @@ impl SwarmDriver {
                         .retain(|peer_addr| key_address.distance(peer_addr) < boundary_distance);
                 }
 
-                let _res = sender.send(Some((quoting_metrics, is_already_stored)));
+                let _res = sender.send(Ok((quoting_metrics, is_already_stored)));
             }
             LocalSwarmCmd::PaymentReceived => {
                 cmd_string = "PaymentReceived";
@@ -706,7 +708,7 @@ impl SwarmDriver {
                             .behaviour_mut()
                             .kademlia
                             .store_mut()
-                            .get_farthest();
+                            .get_farthest()?;
                         self.replication_fetcher.set_farthest_on_full(farthest);
                     }
                     Err(_) => {
@@ -734,7 +736,7 @@ impl SwarmDriver {
                     .behaviour_mut()
                     .kademlia
                     .store_mut()
-                    .get_farthest_replication_distance()
+                    .get_farthest_replication_distance()?
                 {
                     self.replication_fetcher
                         .set_replication_distance_range(distance);
@@ -1052,7 +1054,7 @@ impl SwarmDriver {
         self.last_replication = Some(Instant::now());
 
         let self_addr = NetworkAddress::from_peer(self.self_peer_id);
-        let mut replicate_targets = self.get_replicate_candidates(&self_addr);
+        let mut replicate_targets = self.get_replicate_candidates(&self_addr)?;
 
         let now = Instant::now();
         self.replication_targets
@@ -1068,7 +1070,7 @@ impl SwarmDriver {
             .behaviour_mut()
             .kademlia
             .store_mut()
-            .record_addresses_ref()
+            .record_addresses_ref()?
             .values()
             .cloned()
             .collect();
@@ -1103,7 +1105,10 @@ impl SwarmDriver {
     // Note that:
     //   * For general replication, replicate candidates shall be the closest to self
     //   * For replicate fresh records, the replicate candidates shall be the closest to data
-    pub(crate) fn get_replicate_candidates(&mut self, target: &NetworkAddress) -> Vec<PeerId> {
+    pub(crate) fn get_replicate_candidates(
+        &mut self,
+        target: &NetworkAddress,
+    ) -> Result<Vec<PeerId>> {
         // get closest peers from buckets, sorted by increasing distance to the target
         let kbucket_key = target.as_kbucket_key();
         let closest_k_peers: Vec<PeerId> = self
@@ -1120,21 +1125,21 @@ impl SwarmDriver {
             .behaviour_mut()
             .kademlia
             .store_mut()
-            .get_farthest_replication_distance()
+            .get_farthest_replication_distance()?
         {
             let peers_in_range = get_peers_in_range(&closest_k_peers, target, responsible_range);
 
             if peers_in_range.len() >= CLOSE_GROUP_SIZE {
-                return peers_in_range;
+                return Ok(peers_in_range);
             }
         }
 
         // In case the range is too narrow, fall back to at least CLOSE_GROUP_SIZE peers.
-        closest_k_peers
+        Ok(closest_k_peers
             .iter()
             .take(CLOSE_GROUP_SIZE)
             .cloned()
-            .collect()
+            .collect())
     }
 }
 
