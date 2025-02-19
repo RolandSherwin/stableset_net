@@ -7,7 +7,6 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{
-    bootstrap::{ContinuousNetworkDiscover, NETWORK_DISCOVER_INTERVAL},
     circular_vec::CircularVec,
     cmd::{LocalSwarmCmd, NetworkSwarmCmd},
     config::GetRecordCfg,
@@ -18,7 +17,7 @@ use crate::{
     fifo_register::FifoRegister,
     log_markers::Marker,
     multiaddr_pop_p2p,
-    network_discovery::NetworkDiscovery,
+    network_discovery::{NetworkDiscovery, NETWORK_DISCOVER_INTERVAL},
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
     relay_manager::RelayManager,
@@ -554,7 +553,6 @@ impl NetworkBuilder {
 
         let swarm = Swarm::new(transport, behaviour, peer_id, swarm_config);
 
-        let bootstrap = ContinuousNetworkDiscover::new();
         let replication_fetcher = ReplicationFetcher::new(peer_id, network_event_sender.clone());
 
         // Enable relay manager for nodes behind home network
@@ -591,7 +589,6 @@ impl NetworkBuilder {
             #[cfg(feature = "open-metrics")]
             close_group: Vec::with_capacity(CLOSE_GROUP_SIZE),
             peers_in_rt: 0,
-            bootstrap,
             bootstrap_cache: self.bootstrap_cache,
             relay_manager,
             connected_relay_clients: Default::default(),
@@ -687,7 +684,7 @@ pub struct SwarmDriver {
     #[cfg(feature = "open-metrics")]
     pub(crate) close_group: Vec<PeerId>,
     pub(crate) peers_in_rt: usize,
-    pub(crate) bootstrap: ContinuousNetworkDiscover,
+    pub(crate) network_discovery: NetworkDiscovery,
     pub(crate) bootstrap_cache: Option<BootstrapCacheStore>,
     pub(crate) external_address_manager: Option<ExternalAddressManager>,
     pub(crate) relay_manager: Option<RelayManager>,
@@ -711,9 +708,6 @@ pub struct SwarmDriver {
     pub(crate) pending_get_record: PendingGetRecord,
     /// A list of the most recent peers we have dialed ourselves. Old dialed peers are evicted once the vec fills up.
     pub(crate) dialed_peers: CircularVec<PeerId>,
-    // A list of random `PeerId` candidates that falls into kbuckets,
-    // This is to ensure a more accurate network discovery.
-    pub(crate) network_discovery: NetworkDiscovery,
     pub(crate) bootstrap_peers: BTreeMap<Option<u32>, HashSet<PeerId>>,
     // Peers that having live connection to. Any peer got contacted during kad network query
     // will have live connection established. And they may not appear in the RT.
