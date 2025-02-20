@@ -95,14 +95,14 @@ impl AntNode {
         let node = rt.block_on(async {
             let mut node_builder = NodeBuilder::new(
                 keypair,
+                initial_peers,
                 rewards_address,
                 evm_network,
                 node_socket_addr,
-                local,
                 root_dir.unwrap_or_else(|| PathBuf::from(".")),
-                false,
             );
-            node_builder.initial_peers(initial_peers);
+            node_builder.local(local);
+            node_builder.upnp(false);
             node_builder.is_behind_home_network(home_network);
 
             node_builder

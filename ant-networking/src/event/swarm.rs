@@ -236,12 +236,20 @@ impl SwarmDriver {
             } => {
                 event_string = "ConnectionEstablished";
                 debug!(%peer_id, num_established, ?concurrent_dial_errors, "ConnectionEstablished ({connection_id:?}) in {established_in:?}: {}", endpoint_str(&endpoint));
+
+                self.initial_bootstrap.on_connection_established(
+                    &endpoint,
+                    &mut self.swarm,
+                    self.peers_in_rt,
+                );
+
                 if let Some(external_addr_manager) = self.external_address_manager.as_mut() {
                     if let ConnectedPoint::Listener { local_addr, .. } = &endpoint {
                         external_addr_manager
                             .on_established_incoming_connection(local_addr.clone());
                     }
                 }
+
                 #[cfg(feature = "open-metrics")]
                 if let Some(relay_manager) = self.relay_manager.as_mut() {
                     relay_manager.on_connection_established(&peer_id, &connection_id);
@@ -291,6 +299,21 @@ impl SwarmDriver {
                 self.record_connection_metrics();
             }
             SwarmEvent::OutgoingConnectionError {
+                connection_id,
+                peer_id: None,
+                error,
+            } => {
+                event_string = "OutgoingConnErr";
+                warn!("OutgoingConnectionError on {connection_id:?} - {error:?}");
+                self.record_connection_metrics();
+
+                self.initial_bootstrap.on_outgoing_connection_error(
+                    None,
+                    &mut self.swarm,
+                    self.peers_in_rt,
+                );
+            }
+            SwarmEvent::OutgoingConnectionError {
                 peer_id: Some(failed_peer_id),
                 error,
                 connection_id,
@@ -299,6 +322,12 @@ impl SwarmDriver {
                 warn!("OutgoingConnectionError to {failed_peer_id:?} on {connection_id:?} - {error:?}");
                 let connection_details = self.live_connected_peers.remove(&connection_id);
                 self.record_connection_metrics();
+
+                self.initial_bootstrap.on_outgoing_connection_error(
+                    Some(failed_peer_id),
+                    &mut self.swarm,
+                    self.peers_in_rt,
+                );
 
                 // we need to decide if this was a critical error and if we should report it to the Issue tracker
                 let is_critical_error = match error {
