@@ -17,7 +17,6 @@ use crate::{
     external_address::ExternalAddressManager,
     fifo_register::FifoRegister,
     log_markers::Marker,
-    multiaddr_pop_p2p,
     network_discovery::{NetworkDiscovery, NETWORK_DISCOVER_INTERVAL},
     record_store::{ClientRecordStore, NodeRecordStore, NodeRecordStoreConfig},
     record_store_api::UnifiedRecordStore,
@@ -48,10 +47,7 @@ use libp2p::{
     kad::{self, KBucketDistance as Distance, QueryId, Record, RecordKey, K_VALUE},
     multiaddr::Protocol,
     request_response::{self, Config as RequestResponseConfig, OutboundRequestId, ProtocolSupport},
-    swarm::{
-        dial_opts::{DialOpts, PeerCondition},
-        ConnectionId, DialError, NetworkBehaviour, StreamProtocol, Swarm,
-    },
+    swarm::{ConnectionId, NetworkBehaviour, StreamProtocol, Swarm},
     Multiaddr, PeerId,
 };
 use libp2p::{swarm::SwarmEvent, Transport as _};
@@ -614,7 +610,6 @@ impl NetworkBuilder {
             // This is based on the libp2p kad::kBuckets peers distribution.
             dialed_peers: CircularVec::new(255),
             network_discovery: NetworkDiscovery::new(&peer_id),
-            bootstrap_peers: Default::default(),
             live_connected_peers: Default::default(),
             latest_established_connection_ids: Default::default(),
             handling_statistics: Default::default(),
@@ -713,7 +708,6 @@ pub struct SwarmDriver {
     pub(crate) pending_get_record: PendingGetRecord,
     /// A list of the most recent peers we have dialed ourselves. Old dialed peers are evicted once the vec fills up.
     pub(crate) dialed_peers: CircularVec<PeerId>,
-    pub(crate) bootstrap_peers: BTreeMap<Option<u32>, HashSet<PeerId>>,
     // Peers that having live connection to. Any peer got contacted during kad network query
     // will have live connection established. And they may not appear in the RT.
     pub(crate) live_connected_peers: BTreeMap<ConnectionId, (PeerId, Multiaddr, Instant)>,
@@ -1013,24 +1007,6 @@ impl SwarmDriver {
 
         // Start with our own PeerID and chain the closest.
         std::iter::once(self.self_peer_id).chain(peers).collect()
-    }
-
-    /// Dials the given multiaddress. If address contains a peer ID, simultaneous
-    /// dials to that peer are prevented.
-    pub(crate) fn dial(&mut self, mut addr: Multiaddr) -> Result<(), DialError> {
-        debug!(%addr, "Dialing manually");
-
-        let peer_id = multiaddr_pop_p2p(&mut addr);
-        let opts = match peer_id {
-            Some(peer_id) => DialOpts::peer_id(peer_id)
-                // If we have a peer ID, we can prevent simultaneous dials.
-                .condition(PeerCondition::NotDialing)
-                .addresses(vec![addr])
-                .build(),
-            None => DialOpts::unknown_peer_id().address(addr).build(),
-        };
-
-        self.swarm.dial(opts)
     }
 
     /// Record one handling time.
