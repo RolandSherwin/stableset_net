@@ -9,6 +9,7 @@
 #[macro_use]
 extern crate tracing;
 
+mod bootstrap;
 mod circular_vec;
 mod cmd;
 mod config;
@@ -1159,6 +1160,15 @@ pub(crate) fn multiaddr_pop_p2p(multiaddr: &mut Multiaddr) -> Option<PeerId> {
     }
 }
 
+/// Return the last `PeerId` from the `Multiaddr` if it exists.
+pub(crate) fn multiaddr_get_p2p(multiaddr: &Multiaddr) -> Option<PeerId> {
+    if let Some(Protocol::P2p(peer_id)) = multiaddr.iter().last() {
+        Some(peer_id)
+    } else {
+        None
+    }
+}
+
 /// Build a `Multiaddr` with the p2p protocol filtered out.
 /// If it is a relayed address, then the relay's P2P address is preserved.
 pub(crate) fn multiaddr_strip_p2p(multiaddr: &Multiaddr) -> Multiaddr {
@@ -1249,7 +1259,7 @@ mod tests {
     #[tokio::test]
     async fn test_network_sign_verify() -> eyre::Result<()> {
         let (network, _, _) =
-            NetworkBuilder::new(Keypair::generate_ed25519(), false).build_client();
+            NetworkBuilder::new(Keypair::generate_ed25519(), false, vec![]).build_client();
         let msg = b"test message";
         let sig = network.sign(msg)?;
         assert!(network.verify(msg, &sig));

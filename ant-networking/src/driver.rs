@@ -7,6 +7,7 @@
 // permissions and limitations relating to use of the SAFE Network Software.
 
 use crate::{
+    bootstrap::InitialBootstrap,
     circular_vec::CircularVec,
     cmd::{LocalSwarmCmd, NetworkSwarmCmd},
     config::GetRecordCfg,
@@ -161,6 +162,7 @@ pub(super) struct NodeBehaviour {
 pub struct NetworkBuilder {
     bootstrap_cache: Option<BootstrapCacheStore>,
     concurrency_limit: Option<usize>,
+    initial_contacts: Vec<Multiaddr>,
     is_behind_home_network: bool,
     keypair: Keypair,
     listen_addr: Option<SocketAddr>,
@@ -174,10 +176,11 @@ pub struct NetworkBuilder {
 }
 
 impl NetworkBuilder {
-    pub fn new(keypair: Keypair, local: bool) -> Self {
+    pub fn new(keypair: Keypair, local: bool, initial_contacts: Vec<Multiaddr>) -> Self {
         Self {
             bootstrap_cache: None,
             concurrency_limit: None,
+            initial_contacts,
             is_behind_home_network: false,
             keypair,
             listen_addr: None,
@@ -589,6 +592,7 @@ impl NetworkBuilder {
             #[cfg(feature = "open-metrics")]
             close_group: Vec::with_capacity(CLOSE_GROUP_SIZE),
             peers_in_rt: 0,
+            initial_bootstrap: InitialBootstrap::new(self.initial_contacts),
             bootstrap_cache: self.bootstrap_cache,
             relay_manager,
             connected_relay_clients: Default::default(),
@@ -684,6 +688,7 @@ pub struct SwarmDriver {
     #[cfg(feature = "open-metrics")]
     pub(crate) close_group: Vec<PeerId>,
     pub(crate) peers_in_rt: usize,
+    pub(crate) initial_bootstrap: InitialBootstrap,
     pub(crate) network_discovery: NetworkDiscovery,
     pub(crate) bootstrap_cache: Option<BootstrapCacheStore>,
     pub(crate) external_address_manager: Option<ExternalAddressManager>,
