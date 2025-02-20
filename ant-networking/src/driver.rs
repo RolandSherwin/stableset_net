@@ -761,6 +761,11 @@ impl SwarmDriver {
             );
         }
 
+        if self.is_client {
+            self.initial_bootstrap
+                .trigger_initial_bootstrap(&mut self.swarm, self.peers_in_rt);
+        }
+
         // temporarily skip processing IncomingConnectionError swarm event to avoid log spamming
         let mut previous_incoming_connection_error_event = None;
         loop {

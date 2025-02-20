@@ -196,6 +196,11 @@ impl SwarmDriver {
                     debug!("All our external addresses: {all_external_addresses:?}");
                 }
 
+                if !self.is_client {
+                    self.initial_bootstrap
+                        .trigger_initial_bootstrap(&mut self.swarm, self.peers_in_rt);
+                }
+
                 self.send_event(NetworkEvent::NewListenAddr(address.clone()));
             }
             SwarmEvent::ListenerClosed {

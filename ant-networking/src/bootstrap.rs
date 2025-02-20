@@ -76,7 +76,7 @@ impl InitialBootstrap {
             return;
         }
 
-        while self.ongoing_dials.len() <= CONCURRENT_DIALS && !self.initial_addrs.is_empty() {
+        while self.ongoing_dials.len() < CONCURRENT_DIALS && !self.initial_addrs.is_empty() {
             let Some(mut addr) = self.initial_addrs.pop_front() else {
                 continue;
             };
