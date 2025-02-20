@@ -28,6 +28,8 @@ pub(crate) struct InitialBootstrap {
     initial_addrs: VecDeque<Multiaddr>,
     ongoing_dials: HashSet<Multiaddr>,
     bootstrap_completed: bool,
+    /// This tracker is used by other components to avoid overloading the initial peers.
+    initial_bootstrap_peer_ids: HashSet<PeerId>,
 }
 
 impl InitialBootstrap {
@@ -41,11 +43,24 @@ impl InitialBootstrap {
             false
         };
 
+        let initial_bootstrap_peer_ids =
+            initial_addrs.iter().filter_map(multiaddr_get_p2p).collect();
+
         Self {
             initial_addrs: initial_addrs.into(),
             ongoing_dials: Default::default(),
             bootstrap_completed,
+            initial_bootstrap_peer_ids,
         }
+    }
+
+    /// Returns true if the peer is one of the initial bootstrap peers.
+    pub(crate) fn is_bootstrap_peer(&self, peer_id: &PeerId) -> bool {
+        self.initial_bootstrap_peer_ids.contains(peer_id)
+    }
+
+    pub(crate) fn has_terminated(&self) -> bool {
+        self.bootstrap_completed
     }
 
     /// Trigger the initial bootstrap process.

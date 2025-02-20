@@ -12,8 +12,7 @@ use crate::{
     error::{NetworkError, Result},
     event::TerminateNodeReason,
     log_markers::Marker,
-    multiaddr_pop_p2p, GetRecordError, MsgResponder, NetworkEvent, ResponseQuorum,
-    CLOSE_GROUP_SIZE,
+    GetRecordError, MsgResponder, NetworkEvent, ResponseQuorum, CLOSE_GROUP_SIZE,
 };
 use ant_evm::{PaymentQuote, QuotingMetrics};
 use ant_protocol::{
@@ -183,10 +182,6 @@ pub enum LocalSwarmCmd {
 
 /// Commands to send to the Swarm
 pub enum NetworkSwarmCmd {
-    Dial {
-        addr: Multiaddr,
-        sender: oneshot::Sender<Result<()>>,
-    },
     // Get closest peers from the network
     GetClosestPeersToAddressFromNetwork {
         key: NetworkAddress,
@@ -363,9 +358,6 @@ impl Debug for LocalSwarmCmd {
 impl Debug for NetworkSwarmCmd {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            NetworkSwarmCmd::Dial { addr, .. } => {
-                write!(f, "NetworkSwarmCmd::Dial {{ addr: {addr:?} }}")
-            }
             NetworkSwarmCmd::GetNetworkRecord { key, cfg, .. } => {
                 write!(
                     f,
@@ -514,23 +506,6 @@ impl SwarmDriver {
                 if let Err(err) = sender.send(Ok(())) {
                     error!("Could not send response to PutRecordTo cmd: {:?}", err);
                 }
-            }
-
-            NetworkSwarmCmd::Dial { addr, sender } => {
-                cmd_string = "Dial";
-
-                if let Some(peer_id) = multiaddr_pop_p2p(&mut addr.clone()) {
-                    // Only consider the dial peer is bootstrap node when proper PeerId is provided.
-                    if let Some(kbucket) = self.swarm.behaviour_mut().kademlia.kbucket(peer_id) {
-                        let ilog2 = kbucket.range().0.ilog2();
-                        let peers = self.bootstrap_peers.entry(ilog2).or_default();
-                        peers.insert(peer_id);
-                    }
-                }
-                let _ = match self.dial(addr) {
-                    Ok(_) => sender.send(Ok(())),
-                    Err(e) => sender.send(Err(e.into())),
-                };
             }
             NetworkSwarmCmd::GetClosestPeersToAddressFromNetwork { key, sender } => {
                 cmd_string = "GetClosestPeersToAddressFromNetwork";
